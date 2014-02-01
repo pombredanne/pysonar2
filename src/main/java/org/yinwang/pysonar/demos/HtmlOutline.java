@@ -2,28 +2,29 @@ package org.yinwang.pysonar.demos;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Indexer;
+import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.Outliner;
-import org.yinwang.pysonar.Util;
+import org.yinwang.pysonar._;
 
 import java.util.List;
 
 
 class HtmlOutline {
 
-    private Indexer indexer;
+    private Analyzer analyzer;
     @Nullable
     private StringBuilder buffer;
 
-    public HtmlOutline(Indexer idx) {
-        this.indexer = idx;
+
+    public HtmlOutline(Analyzer idx) {
+        this.analyzer = idx;
     }
 
 
     @NotNull
     public String generate(String path) {
         buffer = new StringBuilder(1024);
-        List<Outliner.Entry> entries = generateOutline(indexer, path);
+        List<Outliner.Entry> entries = generateOutline(analyzer, path);
         addOutline(entries);
         String html = buffer.toString();
         buffer = null;
@@ -32,8 +33,8 @@ class HtmlOutline {
 
 
     @NotNull
-    public List<Outliner.Entry> generateOutline(Indexer indexer, @NotNull String file) {
-        return new Outliner().generate(indexer, file);
+    public List<Outliner.Entry> generateOutline(Analyzer analyzer, @NotNull String file) {
+        return new Outliner().generate(analyzer, file);
     }
 
 
@@ -45,11 +46,12 @@ class HtmlOutline {
         add("</ul>\n");
     }
 
+
     private void addEntry(@NotNull Outliner.Entry e) {
         add("<li>");
 
         String style = null;
-        switch (e.getKind()) {
+        switch (e.kind) {
             case FUNCTION:
             case METHOD:
             case CONSTRUCTOR:
@@ -69,7 +71,7 @@ class HtmlOutline {
 
         add("<a href='#");
         add(e.getQname());
-        add("', onmouseover='highlight(\"" + Util.escapeQname_(e.getQname()) + "\")'>");
+        add("', onmouseover='highlight(\"" + _.escapeQname(e.getQname()) + "\")'>");
 
         if (style != null) {
             add("<span class='");
@@ -88,6 +90,7 @@ class HtmlOutline {
         }
         add("</li>");
     }
+
 
     private void add(String text) {
         buffer.append(text);

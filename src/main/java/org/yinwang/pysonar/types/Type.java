@@ -1,17 +1,23 @@
 package org.yinwang.pysonar.types;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.TypeStack;
+import org.yinwang.pysonar._;
 
-import java.util.*;
+import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 
 public abstract class Type {
 
-    @Nullable
-    public Scope table;
+    @NotNull
+    public State table = new State(null, State.StateType.SCOPE);
+    public String file = null;
+    public boolean mutated = false;
 
 
     @NotNull
@@ -21,122 +27,218 @@ public abstract class Type {
     public Type() {
     }
 
-    public void setTable(Scope table) {
+
+    public void setTable(@NotNull State table) {
         this.table = table;
     }
 
-    @NotNull
-    public Scope getTable() {
-        if (table == null) {
-            table = new Scope(null, Scope.ScopeType.SCOPE);
-        }
-        return table;
+
+    public void setFile(String file) {
+        this.file = file;
     }
 
 
-    /**
-     * Returns {@code true} if this Python type is implemented in native code
-     * (i.e., C, Java, C# or some other host language.)
-     */
-    public boolean isNative() {
-        return Indexer.idx.builtins.isNative(this);
+    public void setMutated(boolean mutated) {
+        this.mutated = mutated;
     }
+
+
+    public boolean isBool() {
+        return this instanceof BoolType;
+    }
+
+
+    public boolean isUndecidedBool() {
+        return isBool() && asBool().value == BoolType.Value.Undecided &&
+                asBool().s1 != null && asBool().s2 != null;
+    }
+
+
+    public BoolType asBool() {
+        return (BoolType) this;
+    }
+
 
     public boolean isClassType() {
         return this instanceof ClassType;
     }
 
+
     public boolean isDictType() {
         return this instanceof DictType;
     }
+
 
     public boolean isFuncType() {
         return this instanceof FunType;
     }
 
+
     public boolean isInstanceType() {
         return this instanceof InstanceType;
     }
+
 
     public boolean isListType() {
         return this instanceof ListType;
     }
 
+
     public boolean isModuleType() {
         return this instanceof ModuleType;
     }
 
+
     public boolean isNumType() {
-        return (this == Indexer.idx.builtins.BaseNum ||
-                this == Indexer.idx.builtins.BaseFloat ||
-                this == Indexer.idx.builtins.BaseComplex);
+        return this instanceof IntType || this instanceof FloatType;
     }
 
-    public boolean isStrType() {
-        return this == Indexer.idx.builtins.BaseStr;
+
+    public boolean isIntType() {
+        return this instanceof IntType;
     }
+
+
+    public boolean isFloatType() {
+        return this instanceof FloatType;
+    }
+
+
+    public boolean isStrType() {
+        return this == Type.STR;
+    }
+
 
     public boolean isTupleType() {
         return this instanceof TupleType;
     }
 
+
     public boolean isUnionType() {
         return this instanceof UnionType;
     }
 
+
     public boolean isUnknownType() {
-        return this == Indexer.idx.builtins.unknown;
+        return this == Type.UNKNOWN;
     }
+
 
     @NotNull
     public ClassType asClassType() {
         return (ClassType) this;
     }
 
+
     @NotNull
     public DictType asDictType() {
         return (DictType) this;
     }
+
+
+    @NotNull
+    public IntType asIntType() {
+        return (IntType) this;
+    }
+
+
+    @NotNull
+    public FloatType asFloatType() {
+        return (FloatType) this;
+    }
+
 
     @NotNull
     public FunType asFuncType() {
         return (FunType) this;
     }
 
+
     @NotNull
     public InstanceType asInstanceType() {
         return (InstanceType) this;
     }
+
 
     @NotNull
     public ListType asListType() {
         return (ListType) this;
     }
 
-    @Nullable
+
+    @NotNull
     public ModuleType asModuleType() {
         if (this.isUnionType()) {
-            for (Type t : this.asUnionType().getTypes()) {
+            for (Type t : this.asUnionType().types) {
                 if (t.isModuleType()) {
                     return t.asModuleType();
                 }
             }
-            return null;
+            _.die("Not containing a ModuleType");
+            // can't get here, just to make the @NotNull annotation happy
+            return new ModuleType(null, null, null);
         } else if (this.isModuleType()) {
             return (ModuleType) this;
         } else {
-            return null;
+            _.die("Not a ModuleType");
+            // can't get here, just to make the @NotNull annotation happy
+            return new ModuleType(null, null, null);
         }
     }
+
 
     @NotNull
     public TupleType asTupleType() {
         return (TupleType) this;
     }
 
+
     @NotNull
     public UnionType asUnionType() {
         return (UnionType) this;
+    }
+
+
+    public boolean isTrue() {
+        if (this == Type.TRUE) {
+            return true;
+        }
+        if (this == Type.FALSE || this.isUndecidedBool()) {
+            return false;
+        }
+        if (this.isIntType() && (this.asIntType().lt(BigInteger.ZERO) || this.asIntType().gt(BigInteger.ZERO))) {
+            return true;
+        }
+        if (this.isIntType() && this.asIntType().isZero()) {
+            return false;
+        }
+        if (this.isFloatType() && (this.asFloatType().lt(0) || this.asFloatType().gt(0))) {
+            return true;
+        }
+        if (this.isFloatType() && this.asFloatType().isZero()) {
+            return false;
+        }
+        return false;
+    }
+
+
+    public boolean isFalse() {
+        if (this == Type.FALSE) {
+            return true;
+        }
+        if (this == Type.TRUE || this.isUndecidedBool()) {
+            return false;
+        }
+        if (this.isIntType() && this.asIntType().isZero()) {
+            return true;
+        }
+        if (this.isFloatType() && this.asFloatType().isZero()) {
+            return true;
+        }
+        if (this == Type.NONE) {
+            return true;
+        }
+        return false;
     }
 
 
@@ -157,10 +259,12 @@ public abstract class Type {
             return count;
         }
 
+
         public void pop(Type t) {
             elements.remove(t);
             used.remove(t);
         }
+
 
         public Integer visit(Type t) {
             Integer i = elements.get(t);
@@ -170,13 +274,12 @@ public abstract class Type {
             return i;
         }
 
+
         public boolean isUsed(Type t) {
             return used.contains(t);
         }
     }
 
-
-    public abstract boolean equals(Object other);
 
     protected abstract String printType(CyclicTypeRecorder ctr);
 
@@ -184,8 +287,18 @@ public abstract class Type {
     @NotNull
     @Override
     public String toString() {
-//        return "?";
         return printType(new CyclicTypeRecorder());
     }
 
+
+    public static InstanceType UNKNOWN = new InstanceType(new ClassType("?", null, null));
+    public static InstanceType CONT = new InstanceType(new ClassType("None", null, null));
+    public static InstanceType NONE = new InstanceType(new ClassType("None", null, null));
+    public static BoolType TRUE = new BoolType(BoolType.Value.True);
+    public static BoolType FALSE = new BoolType(BoolType.Value.False);
+    public static StrType STR = new StrType(null);
+    public static IntType INT = new IntType();
+    public static FloatType FLOAT = new FloatType();
+    public static ComplexType COMPLEX = new ComplexType();
+    public static BoolType BOOL = new BoolType(BoolType.Value.Undecided);
 }

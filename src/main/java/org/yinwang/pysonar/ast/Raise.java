@@ -1,9 +1,9 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
+
 
 public class Raise extends Node {
 
@@ -12,22 +12,30 @@ public class Raise extends Node {
     public Node traceback;
 
 
-    public Raise(Node exceptionType, Node inst, Node traceback, int start, int end) {
-        super(start, end);
+    public Raise(Node exceptionType, Node inst, Node traceback, String file, int start, int end) {
+        super(file, start, end);
         this.exceptionType = exceptionType;
         this.inst = inst;
         this.traceback = traceback;
         addChildren(exceptionType, inst, traceback);
     }
 
+
     @NotNull
     @Override
-    public Type resolve(Scope s, int tag) {
-        if (exceptionType != null) resolveExpr(exceptionType, s, tag);
-        if (inst != null) resolveExpr(inst, s, tag);
-        if (traceback != null) resolveExpr(traceback, s, tag);
-        return Indexer.idx.builtins.Cont;
+    public Type transform(State s) {
+        if (exceptionType != null) {
+            transformExpr(exceptionType, s);
+        }
+        if (inst != null) {
+            transformExpr(inst, s);
+        }
+        if (traceback != null) {
+            transformExpr(traceback, s);
+        }
+        return Type.CONT;
     }
+
 
     @NotNull
     @Override
@@ -35,12 +43,4 @@ public class Raise extends Node {
         return "<Raise:" + traceback + ":" + exceptionType + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNode(exceptionType, v);
-            visitNode(inst, v);
-            visitNode(traceback, v);
-        }
-    }
 }

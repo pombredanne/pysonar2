@@ -1,30 +1,28 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
+
 
 public class Ellipsis extends Node {
 
-    public Ellipsis(int start, int end) {
-        super(start, end);
+    public Ellipsis(String file, int start, int end) {
+        super(file, start, end);
     }
+
 
     @NotNull
     @Override
     public String toString() {
-        return "<Ellipsis>";
-    }
-    
-    @NotNull
-    @Override
-    public Type resolve(Scope s, int tag) {
-        return Indexer.idx.builtins.None;
+        return "...";
     }
 
+
+    @NotNull
     @Override
-    public void visit(@NotNull NodeVisitor v) {
-        v.visit(this);
+    public Type transform(State s) {
+        return Type.NONE;
     }
+
 }

@@ -2,84 +2,74 @@ package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.Binding;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
-import org.yinwang.pysonar.Util;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
 import org.yinwang.pysonar.types.UnionType;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.yinwang.pysonar.Binding.Kind.ATTRIBUTE;
 
+
 public class Attribute extends Node {
 
-    @NotNull
+    @Nullable
     public Node target;
     @NotNull
     public Name attr;
 
-    public Attribute(@NotNull Node target, @NotNull Name attr, int start, int end) {
-        super(start, end);
+
+    public Attribute(@Nullable Node target, @NotNull Name attr, String file, int start, int end) {
+        super(file, start, end);
         this.target = target;
         this.attr = attr;
         addChildren(target, attr);
     }
 
-    @Nullable
-    public String getAttributeName() {
-        return attr.getId();
-    }
 
-
-    public void setAttr(@NotNull Name attr) {
-        this.attr = attr;
-    }
-
-    @NotNull
-    public Name getAttr() {
-        return attr;
-    }
-
-
-    public void setTarget(@NotNull Node target) {
-        this.target = target;
-    }
-
-    @Nullable
-    public Node getTarget() {
-        return target;
-    }
-
-
-    public void setAttr(Scope s, @NotNull Type v, int tag) {
-        Type targetType = resolveExpr(target, s, tag);
+    public void setAttr(State s, @NotNull Type v) {
+        Type targetType = transformExpr(target, s);
         if (targetType.isUnionType()) {
-            Set<Type> types = targetType.asUnionType().getTypes();
+            Set<Type> types = targetType.asUnionType().types;
             for (Type tp : types) {
-                setAttrType(tp, v, tag);
+                setAttrType(tp, v);
             }
         } else {
-            setAttrType(targetType, v, tag);
+            setAttrType(targetType, v);
         }
     }
 
-    private void setAttrType(@NotNull Type targetType, @NotNull Type v, int tag) {
+
+    private void setAttrType(@NotNull Type targetType, @NotNull Type v) {
         if (targetType.isUnknownType()) {
-            Indexer.idx.putProblem(this, "Can't set attribute for UnknownType");
+            Analyzer.self.putProblem(this, "Can't set attribute for UnknownType");
             return;
         }
-        targetType.getTable().putAttr(attr.getId(), attr, v, ATTRIBUTE, tag);
+        // new attr, mark the type as "mutated"
+        if (targetType.table.lookupAttr(attr.id) == null ||
+                !targetType.table.lookupAttrType(attr.id).equals(v))
+        {
+            targetType.setMutated(true);
+        }
+        targetType.table.insert(attr.id, attr, v, ATTRIBUTE);
     }
+
 
     @NotNull
     @Override
-    public Type resolve(Scope s, int tag) {
-        Type targetType = resolveExpr(target, s, tag);
+    public Type transform(State s) {
+        // the form of ::A in ruby
+        if (target == null) {
+            return transformExpr(attr, s);
+        }
+
+        Type targetType = transformExpr(target, s);
         if (targetType.isUnionType()) {
-            Set<Type> types = targetType.asUnionType().getTypes();
-            Type retType = Indexer.idx.builtins.unknown;
+            Set<Type> types = targetType.asUnionType().types;
+            Type retType = Type.UNKNOWN;
             for (Type tt : types) {
                 retType = UnionType.union(retType, getAttrType(tt));
             }
@@ -89,44 +79,33 @@ public class Attribute extends Node {
         }
     }
 
+
     private Type getAttrType(@NotNull Type targetType) {
-        Binding b = targetType.getTable().lookupAttr(attr.getId());
-        if (b == null) {
-            Indexer.idx.putProblem(attr, "attribute not found in type: " + targetType);
-            Type t = Indexer.idx.builtins.unknown;
-            t.getTable().setPath(targetType.getTable().extendPath(attr.getId()));
+        List<Binding> bs = targetType.table.lookupAttr(attr.id);
+        if (bs == null) {
+            Analyzer.self.putProblem(attr, "attribute not found in type: " + targetType);
+            Type t = Type.UNKNOWN;
+            t.table.setPath(targetType.table.extendPath(attr.id));
             return t;
         } else {
-            Indexer.idx.putRef(attr, b);
-
-            if (b.getType() == null) {
-                Util.msg("b.getType() is null!");
+            for (Binding b : bs) {
+                Analyzer.self.putRef(attr, b);
+                if (parent != null && parent.isCall() &&
+                        b.type.isFuncType() && targetType.isInstanceType())
+                {  // method call
+                    b.type.asFuncType().setSelfType(targetType);
+                }
             }
 
-            if (getParent() == null) {
-                Util.msg("parent is null!");
-            }
-
-            if (getParent() != null && getParent().isCall() &&
-                    b.getType().isFuncType() && targetType.isInstanceType()) {  // method call
-                b.getType().asFuncType().setSelfType(targetType);
-            }
-
-            return b.getType();
+            return State.makeUnion(bs);
         }
     }
+
 
     @NotNull
     @Override
     public String toString() {
-        return "<Attribute:" + start + ":" + target + "." + getAttributeName() + ">";
+        return "<Attribute:" + start + ":" + target + "." + attr.id + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNode(target, v);
-            visitNode(attr, v);
-        }
-    }
 }

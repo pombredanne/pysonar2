@@ -1,76 +1,70 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.Binding;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
 import org.yinwang.pysonar.types.UnionType;
 
-import java.util.ArrayList;
 import java.util.List;
+
 
 public class Block extends Node {
 
-    @Nullable
+    @NotNull
     public List<Node> seq;
 
-    public Block(@Nullable List<Node> seq, int start, int end) {
-        super(start, end);
-        if (seq == null) {
-            seq = new ArrayList<Node>();
-        }
+
+    public Block(@NotNull List<Node> seq, String file, int start, int end) {
+        super(file, start, end);
         this.seq = seq;
         addChildren(seq);
     }
 
-    /**
-     * First mark all the global names then resolve each statement in the sequence. 
-     * Notice that we don't distinguish class and function definitions here. 
-     * Their statements will return None type and bind the names themselves in the scope.
-     * If the sequence contains escaping control-flow, None type will appear in the return type.
-     * This can be used to generate warnings such as "This function may not return a value."
-     */
+
     @NotNull
     @Override
-    public Type resolve(@NotNull Scope scope, int tag) {
+    public Type transform(@NotNull State state) {
         // find global names and mark them
         for (Node n : seq) {
             if (n.isGlobal()) {
-                for (Name name : n.asGlobal().getNames()) {
-                    scope.addGlobalName(name.getId());
-                    Binding nb = scope.lookup(name.getId());
+                for (Name name : n.asGlobal().names) {
+                    state.addGlobalName(name.id);
+                    List<Binding> nb = state.lookup(name.id);
                     if (nb != null) {
-                        Indexer.idx.putRef(name, nb);
+                        Analyzer.self.putRef(name, nb);
                     }
                 }
             }
         }
 
         boolean returned = false;
-        Type retType = Indexer.idx.builtins.unknown;
+        Type retType = Type.UNKNOWN;
 
         for (Node n : seq) {
-            Type t = resolveExpr(n, scope, tag);
+            Type t = transformExpr(n, state);
             if (!returned) {
                 retType = UnionType.union(retType, t);
-                if (!UnionType.contains(t, Indexer.idx.builtins.Cont)) {
+                if (!UnionType.contains(t, Type.CONT)) {
                     returned = true;
-                    retType = UnionType.remove(retType, Indexer.idx.builtins.Cont);
+                    retType = UnionType.remove(retType, Type.CONT);
                 }
-            } else if (scope.getScopeType() != Scope.ScopeType.GLOBAL &&
-                       scope.getScopeType() != Scope.ScopeType.MODULE) {
-                Indexer.idx.putProblem(n, "unreachable code");
+            } else if (state.stateType != State.StateType.GLOBAL &&
+                    state.stateType != State.StateType.MODULE)
+            {
+                Analyzer.self.putProblem(n, "unreachable code");
             }
         }
 
         return retType;
     }
-    
+
+
     public boolean isEmpty() {
         return seq.isEmpty();
     }
+
 
     @NotNull
     @Override
@@ -78,10 +72,4 @@ public class Block extends Node {
         return "<Block:" + seq + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNodeList(seq, v);
-        }
-    }
 }

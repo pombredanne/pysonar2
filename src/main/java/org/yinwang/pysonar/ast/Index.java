@@ -1,25 +1,28 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
+
 
 public class Index extends Node {
 
     public Node value;
 
-    public Index(Node n, int start, int end) {
-        super(start, end);
+
+    public Index(Node n, String file, int start, int end) {
+        super(file, start, end);
         this.value = n;
         addChildren(n);
     }
 
+
     @NotNull
     @Override
-    public Type resolve(Scope s, int tag) {
-        return resolveExpr(value, s, tag);
+    public Type transform(State s) {
+        return transformExpr(value, s);
     }
+
 
     @NotNull
     @Override
@@ -27,10 +30,4 @@ public class Index extends Node {
         return "<Index:" + value + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNode(value, v);
-        }
-    }
 }

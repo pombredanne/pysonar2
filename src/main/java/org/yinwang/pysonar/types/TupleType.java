@@ -1,31 +1,36 @@
 package org.yinwang.pysonar.types;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
+import org.yinwang.pysonar.Analyzer;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+
 public class TupleType extends Type {
 
-    private List<Type> eltTypes;
+    public List<Type> eltTypes;
+
 
     public TupleType() {
         this.eltTypes = new ArrayList<>();
-        getTable().addSuper(Indexer.idx.builtins.BaseTuple.getTable());
-        getTable().setPath(Indexer.idx.builtins.BaseTuple.getTable().getPath());
+        table.addSuper(Analyzer.self.builtins.BaseTuple.table);
+        table.setPath(Analyzer.self.builtins.BaseTuple.table.path);
     }
+
 
     public TupleType(List<Type> eltTypes) {
         this();
         this.eltTypes = eltTypes;
     }
 
+
     public TupleType(Type elt0) {
         this();
         this.eltTypes.add(elt0);
     }
+
 
     public TupleType(Type elt0, Type elt1) {
         this();
@@ -33,26 +38,27 @@ public class TupleType extends Type {
         this.eltTypes.add(elt1);
     }
 
+
     public TupleType(Type... types) {
         this();
         Collections.addAll(this.eltTypes, types);
     }
 
+
     public void setElementTypes(List<Type> eltTypes) {
         this.eltTypes = eltTypes;
     }
 
-    public List<Type> getElementTypes() {
-        return eltTypes;
-    }
 
     public void add(Type elt) {
         eltTypes.add(elt);
     }
 
+
     public Type get(int i) {
         return eltTypes.get(i);
     }
+
 
     @NotNull
     public ListType toListType() {
@@ -69,8 +75,8 @@ public class TupleType extends Type {
         if (typeStack.contains(this, other)) {
             return true;
         } else if (other instanceof TupleType) {
-            List<Type> types1 = getElementTypes();
-            List<Type> types2 = ((TupleType) other).getElementTypes();
+            List<Type> types1 = eltTypes;
+            List<Type> types2 = ((TupleType) other).eltTypes;
 
             if (types1.size() == types2.size()) {
                 typeStack.push(this, other);
@@ -91,10 +97,12 @@ public class TupleType extends Type {
         }
     }
 
+
     @Override
     public int hashCode() {
         return "TupleType".hashCode();
     }
+
 
     @Override
     protected String printType(@NotNull CyclicTypeRecorder ctr) {
@@ -106,9 +114,11 @@ public class TupleType extends Type {
         } else {
             int newNum = ctr.push(this);
             boolean first = true;
-            if (getElementTypes().size() != 1) sb.append("(");
+            if (eltTypes.size() != 1) {
+                sb.append("(");
+            }
 
-            for (Type t : getElementTypes()) {
+            for (Type t : eltTypes) {
                 if (!first) {
                     sb.append(", ");
                 }
@@ -120,7 +130,9 @@ public class TupleType extends Type {
                 sb.append("=#").append(newNum).append(":");
             }
 
-            if (getElementTypes().size() != 1) sb.append(")");
+            if (eltTypes.size() != 1) {
+                sb.append(")");
+            }
             ctr.pop(this);
         }
         return sb.toString();

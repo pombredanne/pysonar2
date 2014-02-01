@@ -1,10 +1,9 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
+
 
 public abstract class Sequence extends Node {
 
@@ -12,14 +11,10 @@ public abstract class Sequence extends Node {
     public List<Node> elts;
 
 
-    public Sequence(@NotNull List<Node> elts, int start, int end) {
-        super(start, end);
+    public Sequence(@NotNull List<Node> elts, String file, int start, int end) {
+        super(file, start, end);
         this.elts = elts;
         addChildren(elts);
     }
 
-    @NotNull
-    public List<Node> getElements() {
-        return elts;
-    }
 }

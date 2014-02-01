@@ -12,6 +12,7 @@ public class TypeStack {
         public Object first;
         public Object second;
 
+
         public Pair(Object first, Object second) {
             this.first = first;
             this.second = second;
@@ -21,6 +22,7 @@ public class TypeStack {
 
     @NotNull
     private List<Pair> stack = new ArrayList<>();
+
 
     public void push(Object first, Object second) {
         stack.add(new Pair(first, second));
@@ -35,7 +37,8 @@ public class TypeStack {
     public boolean contains(Object first, Object second) {
         for (Pair p : stack) {
             if (p.first == first && p.second == second ||
-                    p.first == second && p.second == first) {
+                    p.first == second && p.second == first)
+            {
                 return true;
             }
         }

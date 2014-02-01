@@ -2,21 +2,22 @@ package org.yinwang.pysonar.types;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.Analyzer;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.TypeStack;
-import org.yinwang.pysonar.ast.FunctionDef;
+import org.yinwang.pysonar.ast.Function;
 
 import java.util.*;
+
 
 public class FunType extends Type {
 
     @NotNull
     public Map<Type, Type> arrows = new HashMap<>();
-    public FunctionDef func;
+    public Function func;
     @Nullable
     public ClassType cls = null;
-    private Scope env;
+    public State env;
     @Nullable
     public Type selfType;                 // self's type for calls
     public List<Type> defaultTypes;       // types for default parameters (evaluated at def time)
@@ -26,7 +27,7 @@ public class FunType extends Type {
     }
 
 
-    public FunType(FunctionDef func, Scope env) {
+    public FunType(Function func, State env) {
         this.func = func;
         this.env = env;
     }
@@ -34,15 +35,20 @@ public class FunType extends Type {
 
     public FunType(Type from, Type to) {
         addMapping(from, to);
-        getTable().addSuper(Indexer.idx.builtins.BaseFunction.getTable());
-        getTable().setPath(Indexer.idx.builtins.BaseFunction.getTable().getPath());
+        table.addSuper(Analyzer.self.builtins.BaseFunction.table);
+        table.setPath(Analyzer.self.builtins.BaseFunction.table.path);
     }
 
 
     public void addMapping(Type from, Type to) {
         if (arrows.size() < 5) {
             arrows.put(from, to);
+            Map<Type, Type> oldArrows = arrows;
             arrows = compressArrows(arrows);
+
+            if (toString().length() > 900) {
+                arrows = oldArrows;
+            }
         }
     }
 
@@ -57,44 +63,20 @@ public class FunType extends Type {
         if (!arrows.isEmpty()) {
             return arrows.values().iterator().next();
         } else {
-            return Indexer.idx.builtins.unknown;
+            return Type.UNKNOWN;
         }
     }
 
-
-    public FunctionDef getFunc() {
-        return func;
-    }
-
-    public Scope getEnv() {
-        return env;
-    }
-
-    @Nullable
-    public ClassType getCls() {
-        return cls;
-    }
 
     public void setCls(ClassType cls) {
         this.cls = cls;
     }
 
-    @Nullable
-    public Type getSelfType() {
-        return selfType;
-    }
 
     public void setSelfType(Type selfType) {
         this.selfType = selfType;
     }
 
-    public void clearSelfType() {
-        this.selfType = null;
-    }
-
-    public List<Type> getDefaultTypes() {
-        return defaultTypes;
-    }
 
     public void setDefaultTypes(List<Type> defaultTypes) {
         this.defaultTypes = defaultTypes;
@@ -105,7 +87,7 @@ public class FunType extends Type {
     public boolean equals(Object other) {
         if (other instanceof FunType) {
             FunType fo = (FunType) other;
-            return fo.getTable().getPath().equals(getTable().getPath()) || this == other;
+            return fo.table.path.equals(table.path) || this == other;
         } else {
             return false;
         }
@@ -114,8 +96,8 @@ public class FunType extends Type {
 
     static Type removeNoneReturn(@NotNull Type toType) {
         if (toType.isUnionType()) {
-            Set<Type> types = new HashSet<>(toType.asUnionType().getTypes());
-            types.remove(Indexer.idx.builtins.Cont);
+            Set<Type> types = new HashSet<>(toType.asUnionType().types);
+            types.remove(Type.CONT);
             return UnionType.newUnion(types);
         } else {
             return toType;
@@ -139,13 +121,13 @@ public class FunType extends Type {
             return true;
         }
 
-        if (type1.isUnknownType() || type1.equals(type2)) {
+        if (type1.isUnknownType() || type1 == Type.NONE || type1.equals(type2)) {
             return true;
         }
 
         if (type1 instanceof TupleType && type2 instanceof TupleType) {
-            List<Type> elems1 = ((TupleType) type1).getElementTypes();
-            List<Type> elems2 = ((TupleType) type2).getElementTypes();
+            List<Type> elems1 = ((TupleType) type1).eltTypes;
+            List<Type> elems2 = ((TupleType) type2).eltTypes;
 
             if (elems1.size() == elems2.size()) {
                 typeStack.push(type1, type2);
@@ -158,6 +140,10 @@ public class FunType extends Type {
             }
 
             return true;
+        }
+
+        if (type1 instanceof ListType && type2 instanceof ListType) {
+            return subsumedInner(((ListType) type1).toTupleType(), ((ListType) type2).toTupleType(), typeStack);
         }
 
         return false;
@@ -186,6 +172,26 @@ public class FunType extends Type {
     }
 
 
+    // If the self type is set, use the self type in the display
+    // This is for display purpose only, it may not be logically
+    //   correct wrt some pathological programs
+    private TupleType simplifySelf(TupleType from) {
+        TupleType simplified = new TupleType();
+        if (from.eltTypes.size() > 0) {
+            if (cls != null) {
+                simplified.add(cls.getCanon());
+            } else {
+                simplified.add(from.get(0));
+            }
+        }
+
+        for (int i = 1; i < from.eltTypes.size(); i++) {
+            simplified.add(from.get(i));
+        }
+        return simplified;
+    }
+
+
     @Override
     protected String printType(@NotNull CyclicTypeRecorder ctr) {
 
@@ -205,11 +211,20 @@ public class FunType extends Type {
             Set<String> seen = new HashSet<>();
 
             for (Map.Entry<Type, Type> e : arrows.entrySet()) {
-                String as = e.getKey().printType(ctr) + " -> " + e.getValue().printType(ctr);
+                Type from = e.getKey();
+                if (from.isTupleType()) {
+                    from = simplifySelf(from.asTupleType());
+                }
+
+                String as = from.printType(ctr) + " -> " + e.getValue().printType(ctr);
 
                 if (!seen.contains(as)) {
                     if (i != 0) {
-                        sb.append(" | ");
+                        if (Analyzer.self.multilineFunType) {
+                            sb.append("\n| ");
+                        } else {
+                            sb.append(" | ");
+                        }
                     }
 
                     sb.append(as);

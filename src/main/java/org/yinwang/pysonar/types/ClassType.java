@@ -2,85 +2,65 @@ package org.yinwang.pysonar.types;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
+
 
 public class ClassType extends Type {
 
-    private String name;
-    private InstanceType canon;
-    private Type superclass;
-
-    public ClassType() {
-        this("<unknown>", null);
-    }
+    public String name;
+    public InstanceType canon;
+    public Type superclass;
 
 
-    public ClassType(@NotNull String name, @Nullable Scope parent) {
+    public ClassType(@NotNull String name, @Nullable State parent) {
         this.name = name;
-        this.setTable(new Scope(parent, Scope.ScopeType.CLASS));
-        this.getTable().setType(this);
+        this.setTable(new State(parent, State.StateType.CLASS));
+        table.setType(this);
         if (parent != null) {
-            this.getTable().setPath(parent.extendPath(name));
+            table.setPath(parent.extendPath(name));
         } else {
-            this.getTable().setPath(name);
+            table.setPath(name);
         }
     }
 
-    public ClassType(@NotNull String name, Scope parent, @Nullable ClassType superClass) {
+
+    public ClassType(@NotNull String name, State parent, @Nullable ClassType superClass) {
         this(name, parent);
         if (superClass != null) {
             addSuper(superClass);
         }
     }
 
+
     public void setName(String name) {
-      this.name = name;
+        this.name = name;
     }
 
-    public String getName() {
-      return name;
-    }
 
     public void addSuper(@NotNull Type superclass) {
         this.superclass = superclass;
-        getTable().addSuper(superclass.getTable());
+        table.addSuper(superclass.table);
     }
-    
+
+
     public InstanceType getCanon() {
         if (canon == null) {
-            canon = new InstanceType(this, null, null, 0);
+            canon = new InstanceType(this);
         }
         return canon;
     }
 
 
     @Override
-    public int hashCode() {
-        return "ClassType".hashCode();
-    }
-
-
-    @Override
     public boolean equals(Object other) {
-        if (other instanceof ClassType) {
-            ClassType co = (ClassType) other;
-            return getTable().getPath().equals(co.getTable().getPath());
-        } else {
-            return this == other;
-        }
+        return this == other;
     }
 
 
-    // XXX: Type equality for ClassType is now object identity, because classes
-    // can have have multiple definition sites so they shouldn't be considered
-    // identical even if they have the
-    // same path name (qname). NInstance type equality is now rigorously
-    // defined.
-    
     @Override
     protected String printType(CyclicTypeRecorder ctr) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<").append(getName()).append(">");
+        sb.append("<").append(name).append(">");
         return sb.toString();
     }
 }

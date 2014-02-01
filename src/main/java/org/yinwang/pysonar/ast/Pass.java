@@ -1,21 +1,23 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
+
 
 public class Pass extends Node {
 
-    public Pass(int start, int end) {
-        super(start, end);
+    public Pass(String file, int start, int end) {
+        super(file, start, end);
     }
-    
+
+
     @NotNull
     @Override
-    public Type resolve(Scope s, int tag) {
-        return Indexer.idx.builtins.Cont;
+    public Type transform(State s) {
+        return Type.CONT;
     }
+
 
     @NotNull
     @Override
@@ -23,8 +25,4 @@ public class Pass extends Node {
         return "<Pass>";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        v.visit(this);
-    }
 }

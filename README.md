@@ -1,8 +1,7 @@
 ## PySonar2 - a deep static analyzer for Python
 
-PySonar2 is a static analyzer for Python, which does sophisticated
-interprocedural analysis to infer types. To understand it, please refer to my
-blog posts:
+PySonar2 is a static analyzer for Python, which does interprocedural analysis to
+infer types. To understand its properties, please refer to my blog posts:
 
 - http://yinwang0.wordpress.com/2010/09/12/pysonar
 - http://yinwang0.wordpress.com/2013/06/21/pysonar-slides
@@ -11,22 +10,20 @@ blog posts:
 
 ### How to build
 
-    mvn clean package
+    mvn package
 
 
-### If the build is broken
 
-I haven't set up releases, so I push working copies of the builds that I don't
-see problems so far to the `target` directory as a "stable" version. If the
-current build is broken or buggy, please grab that snapshot instead. And of
-course, filing an issue is appreciated.
+### System Requirements
 
+* Python 2.7.x is recommended (Python <= 2.5 does not work, Python 2.6 works for
+  some people but not all)
 
-### Configuration
+* Python 3.x if you have Python3 files
 
 PySonar2 uses CPython interpreter to parse Python code, so please make sure you
 have `python` or `python3` installed and pointed to by the `PATH` environment
-variable.
+variable. If you have them in different names, please make symbol links.
 
 `PYTHONPATH` environment variable is used for locating the Python standard
 libraries. It is important to point it to the correct Python library, for
@@ -57,28 +54,15 @@ the _html_ directory after this process.
 
 ### Memory Usage
 
-All serious static analysis tools require a lot of memory to run. PySonar2
-doesn't need much memory to do analysis. 1GB is probably enough for analyzing a
-medium sized project such as the standard library or Django. But for generating
-the HTML files, you may need quite some memory (~2.5GB for Python 2.7 standard
-lib). This is due to the highlighting code I added to the demo not using
-sophisticated ways of doing it. The situation may change soon.
+PySonar2 doesn't need much memory to do analysis. 1.5Gb is probably enough for
+analyzing a medium sized project such as Python's standard library or Django.
+But for generating the HTML files, you may need quite some memory (~2.5Gb for
+Python 2.7 standard lib). This is due to the highlighting code is putting all
+code and their HTML tags into the memory.
 
 
 
-### Jython Branch
-
-PySonar used to use Jython's parser and was part of Jython. If you want to try
-that version, please checkout the <a
-href="https://github.com/yinwang0/pysonar2/tree/jython">jython branch</a>. You
-may also want to look at <a
-href="http://hg.python.org/jython/file/11776cd9765b/src/org/python/indexer">PySonar 1.0
-code</a> inside Jython project. But keep in mind that the new code here is much
-better, and those old versions are no longer supported or developed by me.
-
-
-
-### Copyright (BSD-style)
+### License
 
 Copyright (c) 2013 Yin Wang
 

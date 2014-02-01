@@ -1,32 +1,33 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.ListType;
 import org.yinwang.pysonar.types.Type;
+
 
 public class Yield extends Node {
 
     public Node value;
 
 
-    public Yield(Node n, int start, int end) {
-        super(start, end);
+    public Yield(Node n, String file, int start, int end) {
+        super(file, start, end);
         this.value = n;
         addChildren(n);
     }
 
+
     @NotNull
     @Override
-    public Type resolve(Scope s, int tag) {
+    public Type transform(State s) {
         if (value != null) {
-            return new ListType(resolveExpr(value, s, tag));
+            return new ListType(transformExpr(value, s));
         } else {
-            return Indexer.idx.builtins.None;
+            return Type.NONE;
         }
     }
+
 
     @NotNull
     @Override
@@ -34,10 +35,4 @@ public class Yield extends Node {
         return "<Yield:" + start + ":" + value + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNode(value, v);
-        }
-    }
 }

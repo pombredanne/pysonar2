@@ -1,47 +1,65 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
 import org.yinwang.pysonar.types.UnionType;
 
+
 public class If extends Node {
 
+    @NotNull
     public Node test;
-    public Block body;
-    public Block orelse;
+    public Node body;
+    public Node orelse;
 
 
-    public If(Node test, Block body, Block orelse, int start, int end) {
-        super(start, end);
+    public If(@NotNull Node test, Node body, Node orelse, String file, int start, int end) {
+        super(file, start, end);
         this.test = test;
         this.body = body;
         this.orelse = orelse;
         addChildren(test, body, orelse);
     }
 
+
     @NotNull
     @Override
-    public Type resolve(@NotNull Scope s, int tag) {
+    public Type transform(@NotNull State s) {
         Type type1, type2;
-        resolveExpr(test, s, tag);
-        int newTag = Indexer.idx.newThread();
+        State s1 = s.copy();
+        State s2 = s.copy();
 
-        if (body != null && !body.isEmpty()) {
-            type1 = resolveExpr(body, s, newTag);
+        // ignore condition for now
+        transformExpr(test, s);
+
+        if (body != null) {
+            type1 = transformExpr(body, s1);
         } else {
-            type1 = Indexer.idx.builtins.Cont;
+            type1 = Type.CONT;
         }
 
-        if (orelse != null && !orelse.isEmpty()) {
-            type2 = resolveExpr(orelse, s, -newTag);
+        if (orelse != null) {
+            type2 = transformExpr(orelse, s2);
         } else {
-            type2 = Indexer.idx.builtins.Cont;
+            type2 = Type.CONT;
+        }
+
+        boolean cont1 = UnionType.contains(type1, Type.CONT);
+        boolean cont2 = UnionType.contains(type2, Type.CONT);
+
+        // decide which branch affects the downstream state
+        if (cont1 && cont2) {
+            s.overwrite(State.merge(s1, s2));
+        } else if (cont1) {
+            s.overwrite(s1);
+        } else if (cont2) {
+            s.overwrite(s2);
         }
 
         return UnionType.union(type1, type2);
     }
+
 
     @NotNull
     @Override
@@ -49,12 +67,4 @@ public class If extends Node {
         return "<If:" + start + ":" + test + ":" + body + ":" + orelse + ">";
     }
 
-    @Override
-    public void visit(@NotNull NodeVisitor v) {
-        if (v.visit(this)) {
-            visitNode(test, v);
-            visitNode(body, v);
-            visitNode(orelse, v);
-        }
-    }
 }

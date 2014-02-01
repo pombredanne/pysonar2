@@ -1,53 +1,53 @@
 package org.yinwang.pysonar.types;
 
 import org.jetbrains.annotations.NotNull;
-import org.yinwang.pysonar.Indexer;
+import org.yinwang.pysonar.Analyzer;
 
 import java.util.ArrayList;
 import java.util.List;
 
+
 public class ListType extends Type {
 
-    private Type eltType;
+    public Type eltType;
     @NotNull
-    public List<Type> positional = new ArrayList<Type>();
+    public List<Type> positional = new ArrayList<>();
     @NotNull
-    public List<Object> values = new ArrayList<Object>();
+    public List<Object> values = new ArrayList<>();
+
 
     public ListType() {
-        this(Indexer.idx.builtins.unknown);
+        this(Type.UNKNOWN);
     }
+
 
     public ListType(Type elt0) {
         eltType = elt0;
-        getTable().addSuper(Indexer.idx.builtins.BaseList.getTable());
-        getTable().setPath(Indexer.idx.builtins.BaseList.getTable().getPath());
+        table.addSuper(Analyzer.self.builtins.BaseList.table);
+        table.setPath(Analyzer.self.builtins.BaseList.table.path);
     }
+
 
     public void setElementType(Type eltType) {
-      this.eltType = eltType;
+        this.eltType = eltType;
     }
 
-    /**
-     * Returns the type of the elements.  You should wrap the result
-     * with {@link UnknownType#follow} to get to the actual type.
-     */
-    public Type getElementType() {
-      return eltType;
-    }
 
     public void add(@NotNull Type another) {
         eltType = UnionType.union(eltType, another);
         positional.add(another);
     }
 
+
     public void addValue(Object v) {
         values.add(v);
     }
 
+
     public Type get(int i) {
         return positional.get(i);
     }
+
 
     @NotNull
     public TupleType toTupleType(int n) {
@@ -70,9 +70,9 @@ public class ListType extends Type {
         if (typeStack.contains(this, other)) {
             return true;
         } else if (other instanceof ListType) {
-            ListType co = (ListType)other;
+            ListType co = (ListType) other;
             typeStack.push(this, other);
-            boolean ret = co.getElementType().equals(getElementType());
+            boolean ret = co.eltType.equals(eltType);
             typeStack.pop(this, other);
             return ret;
         } else {
@@ -97,7 +97,7 @@ public class ListType extends Type {
         } else {
             ctr.push(this);
             sb.append("[");
-            sb.append(getElementType().printType(ctr));
+            sb.append(eltType.printType(ctr));
             sb.append("]");
             ctr.pop(this);
         }

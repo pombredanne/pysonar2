@@ -3,12 +3,13 @@ package org.yinwang.pysonar.demos;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.yinwang.pysonar.*;
-import org.yinwang.pysonar.types.ModuleType;
+import org.yinwang.pysonar.ast.Node;
 
 import java.io.File;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.regex.Pattern;
+
 
 /**
  * Collects per-file hyperlinks, as well as styles that require the
@@ -20,14 +21,20 @@ class Linker {
 
     // Map of file-path to semantic styles & links for that path.
     @NotNull
-    private Map<String, List<StyleRun>> fileStyles = new HashMap<String, List<StyleRun>>();
+    private Map<String, List<Style>> fileStyles = new HashMap<>();
 
     private File outDir;  // where we're generating the output html
     private String rootPath;
 
+    // prevent duplication in def and ref links
+    Set<Object> seenDef = new HashSet<>();
+    Set<Object> seenRef = new HashSet<>();
+
+
     /**
      * Constructor.
-     * @param root the root of the directory tree being indexed
+     *
+     * @param root   the root of the directory tree being indexed
      * @param outdir the html output directory
      */
     public Linker(String root, File outdir) {
@@ -35,105 +42,161 @@ class Linker {
         outDir = outdir;
     }
 
-    /**
-     * Process all bindings across all files and record per-file semantic styles.
-     * Should be called once per index.
-     */
 
-    public void findLinks(@NotNull Indexer indexer) {
-        Util.msg("Adding xref links");
+    public void findLinks(@NotNull Analyzer analyzer) {
+        _.msg("Adding xref links");
+        Progress progress = new Progress(analyzer.getAllBindings().size(), 50);
 
-        int ndef = 0;
-        for (List<Binding> bindings : indexer.getAllBindings().values()) {
-            for (Binding b : bindings) {
-                ndef += b.getDefs().size();
-            }
-        }
-
-        FancyProgress progress = new FancyProgress(ndef, 50);
-        for (List<Binding> bindings : indexer.getAllBindings().values()) {
-            for (Binding b : bindings) {
-                addSemanticStyles(b);
-                for (Def def : b.getDefs()) {
-                    processDef(def, b);
-                    progress.tick();
+        for (Binding b : analyzer.getAllBindings()) {
+            if (b.kind != Binding.Kind.MODULE) {
+                if (Analyzer.self.hasOption("debug")) {
+                    processDefDebug(b);
+                } else {
+                    processDef(b);
                 }
+                progress.tick();
             }
         }
 
         // highlight definitions
-        Util.msg("\nAdding ref links");
-        progress = new FancyProgress(indexer.getReferences().size(), 50);
+        _.msg("\nAdding ref links");
+        progress = new Progress(analyzer.getReferences().size(), 50);
 
-        for (Entry<Ref,List<Binding>> e : indexer.getReferences().entrySet()) {
-            processRef(e.getKey(), e.getValue());
+        for (Entry<Node, List<Binding>> e : analyzer.getReferences().entrySet()) {
+            if (Analyzer.self.hasOption("debug")) {
+                processRefDebug(e.getKey(), e.getValue());
+            } else {
+                processRef(e.getKey(), e.getValue());
+            }
             progress.tick();
         }
 
+        if (Analyzer.self.hasOption("semantic-errors")) {
+            for (List<Diagnostic> ld : analyzer.semanticErrors.values()) {
+                for (Diagnostic d : ld) {
+                    processDiagnostic(d);
+                }
+            }
+        }
 
-//        for (List<Diagnostic> ld: indexer.semanticErrors.values()) {
-//            for (Diagnostic d: ld) {
-//                processDiagnostic(d);
-//            }
-//        }
-
-//        for (List<Diagnostic> ld: indexer.parseErrors.values()) {
+//        for (List<Diagnostic> ld: analyzer.parseErrors.values()) {
 //            for (Diagnostic d: ld) {
 //                processDiagnostic(d);
 //            }
 //        }
     }
 
-    private void processDef(@Nullable Def def, @NotNull Binding binding) {
-        if (def == null || def.isURL() || def.getStart() < 0) {
+
+    private void processDef(@NotNull Binding binding) {
+        String qname = binding.qname;
+        int hash = binding.hashCode();
+
+        if (binding.isURL() || binding.start < 0 || seenDef.contains(hash)) {
             return;
         }
-        StyleRun style = new StyleRun(StyleRun.Type.ANCHOR, def.getStart(), def.getLength());
-        style.message = binding.getQname() + " : " + binding.getType();
-        style.url = binding.getQname();
-        style.id = "" + Math.abs(def.hashCode());
 
-        Set<Ref> refs = binding.getRefs();
+        seenDef.add(hash);
+        Style style = new Style(Style.Type.ANCHOR, binding.start, binding.end);
+        style.message = binding.type.toString();
+        style.url = binding.qname;
+        style.id = qname;
+        addFileStyle(binding.getFile(), style);
+    }
+
+
+    private void processDefDebug(@NotNull Binding binding) {
+        int hash = binding.hashCode();
+
+        if (binding.isURL() || binding.start < 0 || seenDef.contains(hash)) {
+            return;
+        }
+
+        seenDef.add(hash);
+        Style style = new Style(Style.Type.ANCHOR, binding.start, binding.end);
+        style.message = binding.type.toString();
+        style.url = binding.qname;
+        style.id = "" + Math.abs(binding.hashCode());
+
+        Set<Node> refs = binding.refs;
         style.highlight = new ArrayList<>();
 
 
-        for (Ref r : refs) {
+        for (Node r : refs) {
             style.highlight.add(Integer.toString(Math.abs(r.hashCode())));
         }
-        addFileStyle(def.getFile(), style);
+        addFileStyle(binding.getFile(), style);
     }
 
 
-    void processRef(@NotNull Ref ref, @NotNull List<Binding> bindings) {
-        StyleRun link = new StyleRun(StyleRun.Type.LINK, ref.start(), ref.length());
-        link.id = Integer.toString(Math.abs(ref.hashCode()));
+    void processRef(@NotNull Node ref, @NotNull List<Binding> bindings) {
+        String qname = bindings.iterator().next().qname;
+        int hash = ref.hashCode();
 
-        List<String> typings = new ArrayList<>();
-        for (Binding b : bindings) {
-            typings.add(b.getQname() + " : " + b.getType());
-        }
-        link.message = Util.joinWithSep(typings, " | ", "{", "}");
+        if (!seenRef.contains(hash)) {
+            seenRef.add(hash);
 
-        link.highlight = new ArrayList<>();
+            Style link = new Style(Style.Type.LINK, ref.start, ref.end);
+            link.id = qname;
 
-        for (Binding b : bindings) {
-            for (Def d : b.getDefs()) {
-                link.highlight.add(Integer.toString(Math.abs(d.hashCode())));
+            List<String> typings = new ArrayList<>();
+            for (Binding b : bindings) {
+                typings.add(b.type.toString());
+            }
+            link.message = _.joinWithSep(typings, " | ", "{", "}");
+
+            // Currently jump to the first binding only. Should change to have a
+            // hover menu or something later.
+            String path = ref.file;
+            if (path != null) {
+                for (Binding b : bindings) {
+                    if (link.url == null) {
+                        link.url = toURL(b, path);
+                    }
+
+                    if (link.url != null) {
+                        addFileStyle(path, link);
+                        break;
+                    }
+                }
             }
         }
+    }
 
 
-        // Currently jump to the first binding only. Should change to have a
-        // hover menu or something later.
-        String path = ref.getFile();
-        for (Binding b : bindings) {
-            if (link.url == null) {
-                link.url = toURL(b, path);
+    void processRefDebug(@NotNull Node ref, @NotNull List<Binding> bindings) {
+        int hash = ref.hashCode();
+
+        if (!seenRef.contains(hash)) {
+            seenRef.add(hash);
+
+            Style link = new Style(Style.Type.LINK, ref.start, ref.end);
+            link.id = Integer.toString(Math.abs(hash));
+
+            List<String> typings = new ArrayList<>();
+            for (Binding b : bindings) {
+                typings.add(b.type.toString());
+            }
+            link.message = _.joinWithSep(typings, " | ", "{", "}");
+
+            link.highlight = new ArrayList<>();
+            for (Binding b : bindings) {
+                link.highlight.add(Integer.toString(Math.abs(b.hashCode())));
             }
 
-            if (link.url != null) {
-                addFileStyle(path, link);
-                break;
+            // Currently jump to the first binding only. Should change to have a
+            // hover menu or something later.
+            String path = ref.file;
+            if (path != null) {
+                for (Binding b : bindings) {
+                    if (link.url == null) {
+                        link.url = toURL(b, path);
+                    }
+
+                    if (link.url != null) {
+                        addFileStyle(path, link);
+                        break;
+                    }
+                }
             }
         }
     }
@@ -141,100 +204,90 @@ class Linker {
 
     /**
      * Returns the styles (links and extra styles) generated for a given file.
+     *
      * @param path an absolute source path
      * @return a possibly-empty list of styles for that path
      */
-    public List<StyleRun> getStyles(String path) {
+    public List<Style> getStyles(String path) {
         return stylesForFile(path);
     }
 
-    private List<StyleRun> stylesForFile(String path) {
-        List<StyleRun> styles = fileStyles.get(path);
+
+    private List<Style> stylesForFile(String path) {
+        List<Style> styles = fileStyles.get(path);
         if (styles == null) {
-            styles = new ArrayList<StyleRun>();
+            styles = new ArrayList<>();
             fileStyles.put(path, styles);
         }
         return styles;
     }
 
-    private void addFileStyle(String path, StyleRun style) {
+
+    private void addFileStyle(String path, Style style) {
         stylesForFile(path).add(style);
     }
+
 
     /**
      * Add additional highlighting styles based on information not evident from
      * the AST.
      */
     private void addSemanticStyles(@NotNull Binding nb) {
-        Def def = nb.getSingle();
-        if (def == null || !def.isName()) {
-            return;
-        }
-
-        boolean isConst = CONSTANT.matcher(def.getName()).matches();
-        switch (nb.getKind()) {
+        boolean isConst = CONSTANT.matcher(nb.name).matches();
+        switch (nb.kind) {
             case SCOPE:
                 if (isConst) {
-                    addSemanticStyle(def, StyleRun.Type.CONSTANT);
+                    addSemanticStyle(nb, Style.Type.CONSTANT);
                 }
                 break;
             case VARIABLE:
-                addSemanticStyle(def, isConst ? StyleRun.Type.CONSTANT : StyleRun.Type.IDENTIFIER);
+                addSemanticStyle(nb, isConst ? Style.Type.CONSTANT : Style.Type.IDENTIFIER);
                 break;
             case PARAMETER:
-                addSemanticStyle(def, StyleRun.Type.PARAMETER);
+                addSemanticStyle(nb, Style.Type.PARAMETER);
                 break;
             case CLASS:
-                addSemanticStyle(def, StyleRun.Type.TYPE_NAME);
+                addSemanticStyle(nb, Style.Type.TYPE_NAME);
                 break;
         }
     }
 
-    private void addSemanticStyle(@NotNull Def def, StyleRun.Type type) {
-        String path = def.getFile();
+
+    private void addSemanticStyle(@NotNull Binding binding, Style.Type type) {
+        String path = binding.getFile();
         if (path != null) {
-            addFileStyle(path, new StyleRun(type, def.getStart(), def.getLength()));
+            addFileStyle(path, new Style(type, binding.start, binding.end));
         }
     }
 
 
     private void processDiagnostic(@NotNull Diagnostic d) {
-        StyleRun style = new StyleRun(StyleRun.Type.WARNING, d.start, d.end - d.start);
+        Style style = new Style(Style.Type.WARNING, d.start, d.end);
         style.message = d.msg;
         style.url = d.file;
         addFileStyle(d.file, style);
     }
 
-    
-    /**
-     * Generate a URL for a reference to a binding.
-     * @param binding the referenced binding
-     * @param filename the path containing the reference, or null if there was an error
-     */
+
     @Nullable
     private String toURL(@NotNull Binding binding, String filename) {
-        Def def = binding.getSingle();
 
         if (binding.isBuiltin()) {
-            return def.getURL();
+            return binding.getURL();
         }
 
-        String destPath = null;
-
-        if (binding.getKind() == Binding.Kind.MODULE) {
-            ModuleType mtype = binding.getType().asModuleType();
-            if (mtype != null) {
-                destPath = mtype.getFile();
-            }
+        String destPath;
+        if (binding.type.isModuleType()) {
+            destPath = binding.type.asModuleType().file;
         } else {
-            destPath = def.getFile();
+            destPath = binding.getFile();
         }
 
         if (destPath == null) {
             return null;
         }
 
-        String anchor = "#" + binding.getQname();
+        String anchor = "#" + binding.qname;
         if (binding.getFirstFile().equals(filename)) {
             return anchor;
         }
@@ -242,7 +295,7 @@ class Linker {
         if (destPath.startsWith(rootPath)) {
             String relpath;
             if (filename != null) {
-                relpath = Util.relativize(filename, destPath);
+                relpath = _.relPath(filename, destPath);
             } else {
                 relpath = destPath;
             }

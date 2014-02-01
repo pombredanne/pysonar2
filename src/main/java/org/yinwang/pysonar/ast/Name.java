@@ -1,61 +1,85 @@
 package org.yinwang.pysonar.ast;
 
 import org.jetbrains.annotations.NotNull;
+import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.Binding;
-import org.yinwang.pysonar.Indexer;
-import org.yinwang.pysonar.Scope;
+import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
+
+import java.util.List;
+
 
 public class Name extends Node {
 
     @NotNull
     public final String id;  // identifier
+    public NameType type;
+
 
     public Name(String id) {
-        this(id, -1, -1);
+        // generated name
+        this(id, null, -1, -1);
     }
 
-    public Name(@NotNull String id, int start, int end) {
-        super(start, end);
+
+    public Name(@NotNull String id, String file, int start, int end) {
+        super(file, start, end);
         this.id = id;
+        this.name = id;
+        this.type = NameType.LOCAL;
     }
-    
+
+
+    public Name(@NotNull String id, NameType type, String file, int start, int end) {
+        super(file, start, end);
+        this.id = id;
+        this.type = type;
+    }
+
+
     /**
      * Returns {@code true} if this name is structurally in a call position.
+     * We don't always have enough information at this point to know
+     * if it's a constructor call or a regular function/method call,
+     * so we just determine if it looks like a call or not, and the
+     * analyzer will convert constructor-calls to NEW in a later pass.
      */
     @Override
     public boolean isCall() {
         // foo(...)
-        if (parent != null && parent.isCall() && this == ((Call)parent).func) {
+        if (parent != null && parent.isCall() && this == ((Call) parent).func) {
             return true;
         }
 
         // <expr>.foo(...)
         Node gramps;
         return parent instanceof Attribute
-                && this == ((Attribute)parent).attr
+                && this == ((Attribute) parent).attr
                 && (gramps = parent.parent) instanceof Call
-                && parent == ((Call)gramps).func;
+                && parent == ((Call) gramps).func;
     }
-    
+
+
     @NotNull
     @Override
-    public Type resolve(@NotNull Scope s, int tag) {
-        Binding b = s.lookup(id);
+    public Type transform(@NotNull State s) {
+        List<Binding> b = s.lookup(id);
         if (b != null) {
-            Indexer.idx.putRef(this, b);
-            Indexer.idx.stats.inc("resolved");
-            return b.getType();
+            Analyzer.self.putRef(this, b);
+            Analyzer.self.resolved.add(this);
+            Analyzer.self.unresolved.remove(this);
+            return State.makeUnion(b);
         } else if (id.equals("True") || id.equals("False")) {
-            return Indexer.idx.builtins.BaseBool;
+            return Type.BOOL;
         } else {
-            Indexer.idx.putProblem(this, "unbound variable " + getId());
-            Indexer.idx.stats.inc("unresolved");
-            Type t = Indexer.idx.builtins.unknown;
-            t.getTable().setPath(s.extendPath(getId()));
+            Analyzer.self.putProblem(this, "unbound variable " + id);
+            Analyzer.self.unresolved.add(this);
+            Type t = Type.UNKNOWN;
+            t.table.setPath(s.extendPath(id));
             return t;
         }
     }
+
 
     /**
      * Returns {@code true} if this name node is the {@code attr} child
@@ -63,22 +87,31 @@ public class Name extends Node {
      */
     public boolean isAttribute() {
         return parent instanceof Attribute
-                && ((Attribute)parent).getAttr() == this;
+                && ((Attribute) parent).attr == this;
     }
-    
-    @NotNull
-    public String getId() {
-        return id;
+
+
+    public boolean isInstanceVar() {
+        return type == NameType.INSTANCE;
     }
+
+
+    public boolean isGlobalVar() {
+        return type == NameType.GLOBAL;
+    }
+
 
     @NotNull
     @Override
     public String toString() {
-        return "<Name:" + start + ":" + id +  ">";
+        return "(" + id + ":" + start + ")";
     }
 
+
+    @NotNull
     @Override
-    public void visit(@NotNull NodeVisitor v) {
-        v.visit(this);
+    public String toDisplay() {
+        return id;
     }
+
 }
