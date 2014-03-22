@@ -31,16 +31,11 @@ public class BinOp extends Node {
         Type ltype = transformExpr(left, s);
         Type rtype = transformExpr(right, s);
 
-        // If either non-null operand is a string, assume the result is a string.
-        if (ltype == Type.STR || rtype == Type.STR) {
-            return Type.STR;
+        if (Op.isBoolean(op)) {
+            return Type.BOOL;
+        } else {
+            return UnionType.union(ltype, rtype);
         }
-        // If either non-null operand is a number, assume the result is a number.
-        if (ltype == Type.INT || rtype == Type.INT) {
-            return Type.INT;
-        }
-
-        return UnionType.union(ltype, rtype);
     }
 
 

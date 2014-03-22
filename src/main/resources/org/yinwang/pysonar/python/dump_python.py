@@ -15,6 +15,11 @@ class AstEncoder(JSONEncoder):
     def default(self, o):
         if hasattr(o, '__dict__'):
             d = o.__dict__
+            # workaround: decode strings if it's not Python3 code
+            if not is_python3:
+                for k in d:
+                    if isinstance(d[k], str):
+                        d[k] = d[k].decode(enc)
             d['type'] = o.__class__.__name__
             return d
         else:
@@ -170,7 +175,7 @@ def find_start(node, s):
             ret = map_idx(node.lineno, node.col_offset)
         else:                           # special case for """ strings
             i = map_idx(node.lineno, node.col_offset)
-            while i > 0 and i + 2 < len(s) and s[i:i + 3] != '"""':
+            while i > 0 and i + 2 < len(s) and s[i:i + 3] != '"""' and s[i:i + 3] != "'''":
                 i -= 1
             ret = i
     else:
@@ -209,6 +214,9 @@ def find_end(node, s):
 
         if i + 2 < len(s) and s[i:i + 3] == '"""':
             q = '"""'
+            i += 3
+        elif i + 2 < len(s) and s[i:i + 3] == "'''":
+            q = "'''"
             i += 3
         elif s[i] == '"':
             q = '"'

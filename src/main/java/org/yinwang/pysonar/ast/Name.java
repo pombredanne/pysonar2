@@ -7,6 +7,7 @@ import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.types.Type;
 
 import java.util.List;
+import java.util.Set;
 
 
 public class Name extends Node {
@@ -37,33 +38,10 @@ public class Name extends Node {
     }
 
 
-    /**
-     * Returns {@code true} if this name is structurally in a call position.
-     * We don't always have enough information at this point to know
-     * if it's a constructor call or a regular function/method call,
-     * so we just determine if it looks like a call or not, and the
-     * analyzer will convert constructor-calls to NEW in a later pass.
-     */
-    @Override
-    public boolean isCall() {
-        // foo(...)
-        if (parent != null && parent.isCall() && this == ((Call) parent).func) {
-            return true;
-        }
-
-        // <expr>.foo(...)
-        Node gramps;
-        return parent instanceof Attribute
-                && this == ((Attribute) parent).attr
-                && (gramps = parent.parent) instanceof Call
-                && parent == ((Call) gramps).func;
-    }
-
-
     @NotNull
     @Override
     public Type transform(@NotNull State s) {
-        List<Binding> b = s.lookup(id);
+        Set<Binding> b = s.lookup(id);
         if (b != null) {
             Analyzer.self.putRef(this, b);
             Analyzer.self.resolved.add(this);
@@ -88,16 +66,6 @@ public class Name extends Node {
     public boolean isAttribute() {
         return parent instanceof Attribute
                 && ((Attribute) parent).attr == this;
-    }
-
-
-    public boolean isInstanceVar() {
-        return type == NameType.INSTANCE;
-    }
-
-
-    public boolean isGlobalVar() {
-        return type == NameType.GLOBAL;
     }
 
 

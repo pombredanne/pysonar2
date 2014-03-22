@@ -2,10 +2,10 @@ package org.yinwang.pysonar;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.yinwang.pysonar.ast.Class;
 import org.yinwang.pysonar.ast.*;
 import org.yinwang.pysonar.types.ModuleType;
 import org.yinwang.pysonar.types.Type;
+import org.yinwang.pysonar.types.UnionType;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -68,7 +68,7 @@ public class Binding implements Comparable<Object> {
         } else {
             fileOrUrl = node.file;
             if (node instanceof Name) {
-                name = node.asName().id;
+                name = ((Name) node).id;
             }
         }
 
@@ -82,8 +82,8 @@ public class Binding implements Comparable<Object> {
         end = node.end;
 
         Node parent = node.parent;
-        if ((parent instanceof Function && ((Function) parent).name == node) ||
-                (parent instanceof Class && ((Class) parent).name == node))
+        if ((parent instanceof FunctionDef && ((FunctionDef) parent).name == node) ||
+                (parent instanceof ClassDef && ((ClassDef) parent).name == node))
         {
             bodyStart = parent.start;
             bodyEnd = parent.end;
@@ -102,8 +102,8 @@ public class Binding implements Comparable<Object> {
 
     public Str getDocstring() {
         Node parent = node.parent;
-        if ((parent instanceof Function && ((Function) parent).name == node) ||
-                (parent instanceof Class && ((Class) parent).name == node))
+        if ((parent instanceof FunctionDef && ((FunctionDef) parent).name == node) ||
+                (parent instanceof ClassDef && ((ClassDef) parent).name == node))
         {
             return parent.getDocString();
         } else {
@@ -119,6 +119,13 @@ public class Binding implements Comparable<Object> {
 
     public void addRef(Node node) {
         refs.add(node);
+    }
+
+
+    // merge one more type into the type
+    // used by stateful assignments which we can't track down the control flow
+    public void addType(Type t) {
+        type = UnionType.union(type, t);
     }
 
 

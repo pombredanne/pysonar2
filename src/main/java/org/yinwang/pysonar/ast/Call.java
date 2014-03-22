@@ -6,7 +6,6 @@ import org.yinwang.pysonar.*;
 import org.yinwang.pysonar.types.*;
 
 import java.util.*;
-import java.util.Set;
 
 import static org.yinwang.pysonar.Binding.Kind.ATTRIBUTE;
 import static org.yinwang.pysonar.Binding.Kind.CLASS;
@@ -46,14 +45,6 @@ public class Call extends Node {
     @Override
     public Type transform(State s) {
 
-        // Ruby's Class.new
-        if (func instanceof Attribute) {
-            Attribute afun = (Attribute) func;
-            if (afun.attr.id.equals("new")) {
-                func = afun.target;
-            }
-        }
-
         Type fun = transformExpr(func, s);
         List<Type> pos = resolveList(args, s);
         Map<String, Type> hash = new HashMap<>();
@@ -67,8 +58,8 @@ public class Call extends Node {
         Type kw = kwargs == null ? null : transformExpr(kwargs, s);
         Type star = starargs == null ? null : transformExpr(starargs, s);
 
-        if (fun.isUnionType()) {
-            Set<Type> types = fun.asUnionType().types;
+        if (fun instanceof UnionType) {
+            Set<Type> types = ((UnionType) fun).types;
             Type retType = Type.UNKNOWN;
             for (Type ft : types) {
                 Type t = resolveCall(ft, pos, hash, kw, star);
@@ -88,10 +79,10 @@ public class Call extends Node {
                              Type kw,
                              Type star)
     {
-        if (fun.isFuncType()) {
-            FunType ft = fun.asFuncType();
+        if (fun instanceof FunType) {
+            FunType ft = (FunType) fun;
             return apply(ft, pos, hash, kw, star, this);
-        } else if (fun.isClassType()) {
+        } else if (fun instanceof ClassType) {
             return new InstanceType(fun, this, pos);
         } else {
             addWarning("calling non-function and non-class: " + fun);
@@ -170,6 +161,7 @@ public class Call extends Node {
                 }
             }
 
+            toType = UnionType.remove(toType, Type.CONT);
             func.addMapping(fromType, toType);
             func.setSelfType(null);
             return toType;
@@ -179,7 +171,7 @@ public class Call extends Node {
 
     @NotNull
     static private Type bindParams(@Nullable Node call,
-                                   @NotNull Function func,
+                                   @NotNull FunctionDef func,
                                    @NotNull State funcTable,
                                    @Nullable List<Node> args,
                                    @Nullable Name rest,
@@ -196,8 +188,8 @@ public class Call extends Node {
         int dSize = dTypes == null ? 0 : dTypes.size();
         int nPos = pSize - dSize;
 
-        if (star != null && star.isListType()) {
-            star = star.asListType().toTupleType();
+        if (star != null && star instanceof ListType) {
+            star = ((ListType) star).toTupleType();
         }
 
         for (int i = 0, j = 0; i < pSize; i++) {
@@ -208,20 +200,22 @@ public class Call extends Node {
             } else if (i - nPos >= 0 && i - nPos < dSize) {
                 aType = dTypes.get(i - nPos);
             } else {
-                if (hash != null && args.get(i).isName() &&
-                        hash.containsKey(args.get(i).asName().id))
+                if (hash != null && args.get(i) instanceof Name &&
+                        hash.containsKey(((Name) args.get(i)).id))
                 {
-                    aType = hash.get(args.get(i).asName().id);
-                    hash.remove(args.get(i).asName().id);
-                } else if (star != null && star.isTupleType() &&
-                        j < star.asTupleType().eltTypes.size())
-                {
-                    aType = star.asTupleType().get(j++);
+                    aType = hash.get(((Name) args.get(i)).id);
+                    hash.remove(((Name) args.get(i)).id);
                 } else {
-                    aType = Type.UNKNOWN;
-                    if (call != null) {
-                        Analyzer.self.putProblem(args.get(i),
-                                "unable to bind argument:" + args.get(i));
+                    if (star != null && star instanceof TupleType &&
+                            j < ((TupleType) star).eltTypes.size())
+                    {
+                        aType = ((TupleType) star).get(j++);
+                    } else {
+                        aType = Type.UNKNOWN;
+                        if (call != null) {
+                            Analyzer.self.putProblem(args.get(i),
+                                    "unable to bind argument:" + args.get(i));
+                        }
                     }
                 }
             }
@@ -277,7 +271,7 @@ public class Call extends Node {
     static void bindMethodAttrs(@NotNull FunType cl) {
         if (cl.table.parent != null) {
             Type cls = cl.table.parent.type;
-            if (cls != null && cls.isClassType()) {
+            if (cls != null && cls instanceof ClassType) {
                 addReadOnlyAttr(cl, "im_class", cls, CLASS);
                 addReadOnlyAttr(cl, "__class__", cls, CLASS);
                 addReadOnlyAttr(cl, "im_self", cls, ATTRIBUTE);
@@ -304,8 +298,8 @@ public class Call extends Node {
         boolean hasNone = false;
         boolean hasOther = false;
 
-        if (toType.isUnionType()) {
-            for (Type t : toType.asUnionType().types) {
+        if (toType instanceof UnionType) {
+            for (Type t : ((UnionType) toType).types) {
                 if (t == Type.NONE || t == Type.CONT) {
                     hasNone = true;
                 } else {

@@ -92,10 +92,10 @@ public abstract class Node implements java.io.Serializable, Comparable<Object> {
     @Nullable
     public Str getDocString() {
         Node body = null;
-        if (this instanceof Function) {
-            body = ((Function) this).body;
-        } else if (this instanceof Class) {
-            body = ((Class) this).body;
+        if (this instanceof FunctionDef) {
+            body = ((FunctionDef) this).body;
+        } else if (this instanceof ClassDef) {
+            body = ((ClassDef) this).body;
         } else if (this instanceof Module) {
             body = ((Module) this).body;
         }
@@ -121,99 +121,6 @@ public abstract class Node implements java.io.Serializable, Comparable<Object> {
 
     @NotNull
     protected abstract Type transform(State s);
-
-
-    public boolean isCall() {
-        return this instanceof Call;
-    }
-
-
-    public boolean isModule() {
-        return this instanceof Module;
-    }
-
-
-    public boolean isClassDef() {
-        return false;
-    }
-
-
-    public boolean isFunctionDef() {
-        return false;
-    }
-
-
-    public boolean isLambda() {
-        return false;
-    }
-
-
-    public boolean isName() {
-        return this instanceof Name;
-    }
-
-
-    public boolean isAssign() {
-        return this instanceof Assign;
-    }
-
-
-    public boolean isGlobal() {
-        return this instanceof Global;
-    }
-
-
-    public boolean isBinOp() {
-        return this instanceof BinOp;
-    }
-
-
-    @NotNull
-    public BinOp asBinOp() {
-        return (BinOp) this;
-    }
-
-
-    @NotNull
-    public Call asCall() {
-        return (Call) this;
-    }
-
-
-    @NotNull
-    public Module asModule() {
-        return (Module) this;
-    }
-
-
-    @NotNull
-    public Class asClassDef() {
-        return (Class) this;
-    }
-
-
-    @NotNull
-    public Function asFunctionDef() {
-        return (Function) this;
-    }
-
-
-    @NotNull
-    public Name asName() {
-        return (Name) this;
-    }
-
-
-    @NotNull
-    public Assign asAssign() {
-        return (Assign) this;
-    }
-
-
-    @NotNull
-    public Global asGlobal() {
-        return (Global) this;
-    }
 
 
     protected void addWarning(String msg) {

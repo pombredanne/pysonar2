@@ -4,10 +4,11 @@ import org.jetbrains.annotations.NotNull;
 import org.yinwang.pysonar.*;
 import org.yinwang.pysonar.types.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 
-public class Class extends Node {
+public class ClassDef extends Node {
 
     @NotNull
     public Name name;
@@ -15,19 +16,13 @@ public class Class extends Node {
     public Node body;
 
 
-    public Class(@NotNull Name name, List<Node> bases, Node body, String file, int start, int end) {
+    public ClassDef(@NotNull Name name, List<Node> bases, Node body, String file, int start, int end) {
         super(file, start, end);
         this.name = name;
         this.bases = bases;
         this.body = body;
         addChildren(name, this.body);
         addChildren(bases);
-    }
-
-
-    @Override
-    public boolean isClassDef() {
-        return true;
     }
 
 
@@ -38,12 +33,11 @@ public class Class extends Node {
         List<Type> baseTypes = new ArrayList<>();
         for (Node base : bases) {
             Type baseType = transformExpr(base, s);
-            if (baseType.isClassType()) {
+            if (baseType instanceof ClassType) {
                 classType.addSuper(baseType);
-            } else if (baseType.isUnionType()) {
-                for (Type b : baseType.asUnionType().types) {
-                    classType.addSuper(b);
-                    break;
+            } else if (baseType instanceof UnionType) {
+                for (Type parent : ((UnionType) baseType).types) {
+                    classType.addSuper(parent);
                 }
             } else {
                 Analyzer.self.putProblem(base, base + " is not a class");

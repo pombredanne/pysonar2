@@ -2,11 +2,10 @@ package org.yinwang.pysonar;
 
 import org.jetbrains.annotations.NotNull;
 import org.yinwang.pysonar.ast.*;
-import org.yinwang.pysonar.types.ListType;
-import org.yinwang.pysonar.types.Type;
-import org.yinwang.pysonar.types.UnionType;
+import org.yinwang.pysonar.types.*;
 
 import java.util.List;
+import java.util.Set;
 
 
 /**
@@ -19,8 +18,8 @@ public class Binder {
             bind(s, (Name) target, rvalue, kind);
         } else if (target instanceof Tuple) {
             bind(s, ((Tuple) target).elts, rvalue, kind);
-        } else if (target instanceof NList) {
-            bind(s, ((NList) target).elts, rvalue, kind);
+        } else if (target instanceof PyList) {
+            bind(s, ((PyList) target).elts, rvalue, kind);
         } else if (target instanceof Attribute) {
             ((Attribute) target).setAttr(s, rvalue);
         } else if (target instanceof Subscript) {
@@ -53,8 +52,8 @@ public class Binder {
 
 
     public static void bind(@NotNull State s, @NotNull List<Node> xs, @NotNull Type rvalue, Binding.Kind kind) {
-        if (rvalue.isTupleType()) {
-            List<Type> vs = rvalue.asTupleType().eltTypes;
+        if (rvalue instanceof TupleType) {
+            List<Type> vs = ((TupleType) rvalue).eltTypes;
             if (xs.size() != vs.size()) {
                 reportUnpackMismatch(xs, vs.size());
             } else {
@@ -62,28 +61,34 @@ public class Binder {
                     bind(s, xs.get(i), vs.get(i), kind);
                 }
             }
-        } else if (rvalue.isListType()) {
-            bind(s, xs, rvalue.asListType().toTupleType(xs.size()), kind);
-        } else if (rvalue.isDictType()) {
-            bind(s, xs, rvalue.asDictType().toTupleType(xs.size()), kind);
-        } else if (rvalue.isUnknownType()) {
-            for (Node x : xs) {
-                bind(s, x, Type.UNKNOWN, kind);
+        } else {
+            if (rvalue instanceof ListType) {
+                bind(s, xs, ((ListType) rvalue).toTupleType(xs.size()), kind);
+            } else if (rvalue instanceof DictType) {
+                bind(s, xs, ((DictType) rvalue).toTupleType(xs.size()), kind);
+            } else if (rvalue.isUnknownType()) {
+                for (Node x : xs) {
+                    bind(s, x, Type.UNKNOWN, kind);
+                }
+            } else if (xs.size() > 0) {
+                Analyzer.self.putProblem(xs.get(0).file,
+                        xs.get(0).start,
+                        xs.get(xs.size() - 1).end,
+                        "unpacking non-iterable: " + rvalue);
             }
-        } else if (xs.size() > 0) {
-            Analyzer.self.putProblem(xs.get(0).file,
-                    xs.get(0).start,
-                    xs.get(xs.size() - 1).end,
-                    "unpacking non-iterable: " + rvalue);
         }
     }
 
 
     public static void bind(@NotNull State s, @NotNull Name name, @NotNull Type rvalue, Binding.Kind kind) {
-        if (s.isGlobalName(name.id) || name.isGlobalVar()) {
-            Binding b = new Binding(name.id, name, rvalue, kind);
-            s.getGlobalTable().update(name.id, b);
-            Analyzer.self.putRef(name, b);
+        if (s.isGlobalName(name.id)) {
+            Set<Binding> bs = s.lookup(name.id);
+            if (bs != null) {
+                for (Binding b : bs) {
+                    b.addType(rvalue);
+                    Analyzer.self.putRef(name, b);
+                }
+            }
         } else {
             s.insert(name.id, name, rvalue, kind);
         }
@@ -94,21 +99,21 @@ public class Binder {
     public static void bindIter(@NotNull State s, Node target, @NotNull Node iter, Binding.Kind kind) {
         Type iterType = Node.transformExpr(iter, s);
 
-        if (iterType.isListType()) {
-            bind(s, target, iterType.asListType().eltType, kind);
-        } else if (iterType.isTupleType()) {
-            bind(s, target, iterType.asTupleType().toListType().eltType, kind);
+        if (iterType instanceof ListType) {
+            bind(s, target, ((ListType) iterType).eltType, kind);
+        } else if (iterType instanceof TupleType) {
+            bind(s, target, ((TupleType) iterType).toListType().eltType, kind);
         } else {
-            List<Binding> ents = iterType.table.lookupAttr("__iter__");
+            Set<Binding> ents = iterType.table.lookupAttr("__iter__");
             if (ents != null) {
                 for (Binding ent : ents) {
-                    if (ent == null || !ent.type.isFuncType()) {
+                    if (ent == null || !(ent.type instanceof FunType)) {
                         if (!iterType.isUnknownType()) {
                             Analyzer.self.putProblem(iter, "not an iterable type: " + iterType);
                         }
                         bind(s, target, Type.UNKNOWN, kind);
                     } else {
-                        bind(s, target, ent.type.asFuncType().getReturnType(), kind);
+                        bind(s, target, ((FunType) ent.type).getReturnType(), kind);
                     }
                 }
             } else {

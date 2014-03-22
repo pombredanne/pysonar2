@@ -5,7 +5,7 @@ import org.jetbrains.annotations.Nullable;
 import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.State;
 import org.yinwang.pysonar.TypeStack;
-import org.yinwang.pysonar.ast.Function;
+import org.yinwang.pysonar.ast.FunctionDef;
 
 import java.util.*;
 
@@ -14,7 +14,7 @@ public class FunType extends Type {
 
     @NotNull
     public Map<Type, Type> arrows = new HashMap<>();
-    public Function func;
+    public FunctionDef func;
     @Nullable
     public ClassType cls = null;
     public State env;
@@ -27,7 +27,7 @@ public class FunType extends Type {
     }
 
 
-    public FunType(Function func, State env) {
+    public FunType(FunctionDef func, State env) {
         this.func = func;
         this.env = env;
     }
@@ -41,6 +41,10 @@ public class FunType extends Type {
 
 
     public void addMapping(Type from, Type to) {
+        if (from instanceof TupleType) {
+            from = simplifySelf((TupleType) from);
+        }
+
         if (arrows.size() < 5) {
             arrows.put(from, to);
             Map<Type, Type> oldArrows = arrows;
@@ -90,17 +94,6 @@ public class FunType extends Type {
             return fo.table.path.equals(table.path) || this == other;
         } else {
             return false;
-        }
-    }
-
-
-    static Type removeNoneReturn(@NotNull Type toType) {
-        if (toType.isUnionType()) {
-            Set<Type> types = new HashSet<>(toType.asUnionType().types);
-            types.remove(Type.CONT);
-            return UnionType.newUnion(types);
-        } else {
-            return toType;
         }
     }
 
@@ -212,10 +205,6 @@ public class FunType extends Type {
 
             for (Map.Entry<Type, Type> e : arrows.entrySet()) {
                 Type from = e.getKey();
-                if (from.isTupleType()) {
-                    from = simplifySelf(from.asTupleType());
-                }
-
                 String as = from.printType(ctr) + " -> " + e.getValue().printType(ctr);
 
                 if (!seen.contains(as)) {

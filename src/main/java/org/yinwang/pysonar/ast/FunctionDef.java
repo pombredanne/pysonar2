@@ -12,7 +12,7 @@ import org.yinwang.pysonar.types.Type;
 import java.util.List;
 
 
-public class Function extends Node {
+public class FunctionDef extends Node {
 
     public Name name;
     public List<Node> args;
@@ -21,13 +21,12 @@ public class Function extends Node {
     public Name kwarg;   // **kwarg
     public List<Node> afterRest = null;   // after rest arg of Ruby
     public Node body;
-    private List<Node> decoratorList;
     public boolean called = false;
     public boolean isLamba = false;
 
 
-    public Function(Name name, List<Node> args, Node body, List<Node> defaults,
-                    Name vararg, Name kwarg, String file, int start, int end)
+    public FunctionDef(Name name, List<Node> args, Node body, List<Node> defaults,
+                       Name vararg, Name kwarg, String file, int start, int end)
     {
         super(file, start, end);
         if (name != null) {
@@ -54,7 +53,6 @@ public class Function extends Node {
     @NotNull
     @Override
     public Type transform(@NotNull State s) {
-        resolveList(decoratorList, s);
         State env = s.getForwarding();
         FunType fun = new FunType(this, env);
         fun.table.setParent(s);
@@ -78,12 +76,45 @@ public class Function extends Node {
 
             Type outType = s.type;
             if (outType instanceof ClassType) {
-                fun.setCls(outType.asClassType());
+                fun.setCls((ClassType) outType);
             }
 
             Binder.bind(s, name, fun, funkind);
             return Type.CONT;
         }
+    }
+
+
+    public String getArgumentExpr() {
+        StringBuilder argExpr = new StringBuilder();
+        argExpr.append("(");
+        boolean first = true;
+
+        for (Node n : args) {
+            if (!first) {
+                argExpr.append(", ");
+            }
+            first = false;
+            argExpr.append(n.toDisplay());
+        }
+
+        if (vararg != null) {
+            if (!first) {
+                argExpr.append(", ");
+            }
+            first = false;
+            argExpr.append("*" + vararg.toDisplay());
+        }
+
+        if (kwarg != null) {
+            if (!first) {
+                argExpr.append(", ");
+            }
+            argExpr.append("**" + kwarg.toDisplay());
+        }
+
+        argExpr.append(")");
+        return argExpr.toString();
     }
 
 

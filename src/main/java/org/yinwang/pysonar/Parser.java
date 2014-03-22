@@ -6,7 +6,6 @@ import org.apache.commons.io.FileUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.yinwang.pysonar.ast.*;
-import org.yinwang.pysonar.ast.Class;
 
 import java.io.File;
 import java.io.OutputStreamWriter;
@@ -210,10 +209,6 @@ public class Parser {
             return ret;
         }
 
-        if (type.equals("Break")) {
-            return new Control("break", file, start, end);
-        }
-
         if (type.equals("Bytes")) {
             Object s = map.get("s");
             return new Bytes(s, file, start, end);
@@ -232,7 +227,7 @@ public class Parser {
             Name name = (Name) convert(map.get("name_node"));      // hack
             List<Node> bases = convertList(map.get("bases"));
             Block body = convertBlock(map.get("body"));
-            return new Class(name, bases, body, file, start, end);
+            return new ClassDef(name, bases, body, file, start, end);
         }
 
         // left-fold Compare into
@@ -255,8 +250,12 @@ public class Parser {
             return new Comprehension(target, iter, ifs, file, start, end);
         }
 
+        if (type.equals("Break")) {
+            return new Break(file, start, end);
+        }
+
         if (type.equals("Continue")) {
-            return new Control("continue", file, start, end);
+            return new Continue(file, start, end);
         }
 
         if (type.equals("Delete")) {
@@ -325,7 +324,7 @@ public class Parser {
             Node body = type.equals("Lambda") ? convert(map.get("body")) : convertBlock(map.get("body"));
             Name vararg = argsMap.get("vararg") == null ? null : new Name((String) argsMap.get("vararg"));
             Name kwarg = argsMap.get("kwarg") == null ? null : new Name((String) argsMap.get("kwarg"));
-            return new Function(name, args, body, defaults, vararg, kwarg, file, start, end);
+            return new FunctionDef(name, args, body, defaults, vararg, kwarg, file, start, end);
         }
 
         if (type.equals("GeneratorExp")) {
@@ -374,9 +373,9 @@ public class Parser {
 
         if (type.equals("ImportFrom")) {
             String module = (String) map.get("module");
-            List<Name> moduleSeg = module == null ? null : segmentQname(module, start + "from ".length(), true);
-            List<Alias> names = convertList(map.get("names"));
             int level = ((Double) map.get("level")).intValue();
+            List<Name> moduleSeg = module == null ? null : segmentQname(module, start + "from ".length() + level, true);
+            List<Alias> names = convertList(map.get("names"));
             return new ImportFrom(moduleSeg, names, level, file, start, end);
         }
 
@@ -391,10 +390,9 @@ public class Parser {
             return new Keyword(arg, value, file, start, end);
         }
 
-
         if (type.equals("List")) {
             List<Node> elts = convertList(map.get("elts"));
-            return new NList(elts, file, start, end);
+            return new PyList(elts, file, start, end);
         }
 
         if (type.equals("Starred")) { // f(*[1, 2, 3, 4])
@@ -483,7 +481,7 @@ public class Parser {
 
         if (type.equals("Set")) {
             List<Node> elts = convertList(map.get("elts"));
-            return new Set(elts, file, start, end);
+            return new PySet(elts, file, start, end);
         }
 
         if (type.equals("SetComp")) {
@@ -640,7 +638,12 @@ public class Parser {
         if (o == null) {
             return null;
         } else {
-            return new Block(convertListNode(o), file, 0, 0);
+            List<Node> body = convertListNode(o);
+            if (body == null || body.isEmpty()) {
+                return null;
+            } else {
+                return new Block(body, file, 0, 0);
+            }
         }
     }
 
@@ -844,14 +847,14 @@ public class Parser {
         } else if (python3Process != null) {
             Node node3 = parseFileInner(filename, python3Process);
             if (node3 == null) {
-//                _.msg("failed to parse: " + filename);
+                _.msg("failed to parse: " + filename);
                 Analyzer.self.failedToParse.add(filename);
                 return null;
             } else {
                 return node3;
             }
         } else {
-//            _.msg("failed to parse: " + filename);
+            _.msg("failed to parse: " + filename);
             Analyzer.self.failedToParse.add(filename);
             return null;
         }

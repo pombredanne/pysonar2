@@ -5,10 +5,11 @@ import org.jetbrains.annotations.Nullable;
 import org.yinwang.pysonar.Analyzer;
 import org.yinwang.pysonar.Binding;
 import org.yinwang.pysonar.State;
+import org.yinwang.pysonar.types.FunType;
+import org.yinwang.pysonar.types.InstanceType;
 import org.yinwang.pysonar.types.Type;
 import org.yinwang.pysonar.types.UnionType;
 
-import java.util.List;
 import java.util.Set;
 
 import static org.yinwang.pysonar.Binding.Kind.ATTRIBUTE;
@@ -32,8 +33,8 @@ public class Attribute extends Node {
 
     public void setAttr(State s, @NotNull Type v) {
         Type targetType = transformExpr(target, s);
-        if (targetType.isUnionType()) {
-            Set<Type> types = targetType.asUnionType().types;
+        if (targetType instanceof UnionType) {
+            Set<Type> types = ((UnionType) targetType).types;
             for (Type tp : types) {
                 setAttrType(tp, v);
             }
@@ -48,12 +49,6 @@ public class Attribute extends Node {
             Analyzer.self.putProblem(this, "Can't set attribute for UnknownType");
             return;
         }
-        // new attr, mark the type as "mutated"
-        if (targetType.table.lookupAttr(attr.id) == null ||
-                !targetType.table.lookupAttrType(attr.id).equals(v))
-        {
-            targetType.setMutated(true);
-        }
         targetType.table.insert(attr.id, attr, v, ATTRIBUTE);
     }
 
@@ -67,8 +62,8 @@ public class Attribute extends Node {
         }
 
         Type targetType = transformExpr(target, s);
-        if (targetType.isUnionType()) {
-            Set<Type> types = targetType.asUnionType().types;
+        if (targetType instanceof UnionType) {
+            Set<Type> types = ((UnionType) targetType).types;
             Type retType = Type.UNKNOWN;
             for (Type tt : types) {
                 retType = UnionType.union(retType, getAttrType(tt));
@@ -81,7 +76,7 @@ public class Attribute extends Node {
 
 
     private Type getAttrType(@NotNull Type targetType) {
-        List<Binding> bs = targetType.table.lookupAttr(attr.id);
+        Set<Binding> bs = targetType.table.lookupAttr(attr.id);
         if (bs == null) {
             Analyzer.self.putProblem(attr, "attribute not found in type: " + targetType);
             Type t = Type.UNKNOWN;
@@ -90,10 +85,10 @@ public class Attribute extends Node {
         } else {
             for (Binding b : bs) {
                 Analyzer.self.putRef(attr, b);
-                if (parent != null && parent.isCall() &&
-                        b.type.isFuncType() && targetType.isInstanceType())
+                if (parent != null && parent instanceof Call &&
+                        b.type instanceof FunType && targetType instanceof InstanceType)
                 {  // method call
-                    b.type.asFuncType().setSelfType(targetType);
+                    ((FunType) b.type).setSelfType(targetType);
                 }
             }
 
