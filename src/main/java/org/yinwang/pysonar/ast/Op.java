@@ -1,51 +1,72 @@
 package org.yinwang.pysonar.ast;
 
-import org.yinwang.pysonar._;
-
+import org.jetbrains.annotations.Nullable;
+import org.yinwang.pysonar.$;
 
 public enum Op {
     // numeral
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Pow,
-    FloorDiv,
+    Add("+", "__add__"),
+    Sub("-", "__sub__"),
+    Mul("*", "__mul__"),
+    MatMult("@", "__matmult__"),
+    Div("/", "__div__"),
+    Mod("%", "__mod__"),
+    Pow("**", "__pow__"),
+    FloorDiv("//", "__floordiv__"),
 
     // comparison
-    Eq,
-    Eqv,
-    Equal,
-    Lt,
-    Gt,
+    Eq("is"),
+    Equal("==", "__eq__"),
+    Lt("<", "__lt__"),
+    Gt(">", "__gt__"),
 
     // bit
-    BitAnd,
-    BitOr,
-    BitXor,
-    In,
-    LShift,
-    RShift,
-    Invert,
+    BitAnd("&", "__and__"),
+    BitOr("|", "__or__"),
+    BitXor("^", "__xor__"),
+    In("in"),
+    LShift("<<", "__lshift__"),
+    RShift(">>", "__rshift__"),
+    Invert("~", "__invert__"),
 
     // boolean
-    And,
-    Or,
-    Not,
+    And("and"),
+    Or("or"),
+    Not("not"),
 
     // synthetic
-    NotEqual,
-    NotEq,
-    LtE,
-    GtE,
-    NotIn,
+    NotEqual("!=", "__neq__"),
+    NotEq("is not"),
+    LtE("<=", "__lte__"),
+    GtE(">=", "__gte__"),
+    NotIn("not in"),
 
-    // ruby
-    Defined,
-    Match,
-    NotMatch;
+    // unsupported new operator
+    Unsupported("??");
 
+    private String rep;
+
+    @Nullable
+    private String method;
+
+    Op(String rep, @Nullable String method) {
+        this.rep = rep;
+        this.method = method;
+    }
+
+    Op(String rep) {
+        this.rep = rep;
+        this.method = null;
+    }
+
+    public String getRep() {
+        return rep;
+    }
+
+    @Nullable
+    public String getMethod() {
+        return method;
+    }
 
     public static Op invert(Op op) {
         if (op == Op.Lt) {
@@ -68,22 +89,20 @@ public enum Op {
             return Op.And;
         }
 
-        _.die("invalid operator name for invert: " + op);
+        $.die("invalid operator name for invert: " + op);
         return null;  // unreacheable
     }
 
-
     public static boolean isBoolean(Op op) {
         return op == Eq ||
-                op == Eqv ||
-                op == Equal ||
-                op == Lt ||
-                op == Gt ||
-                op == NotEqual ||
-                op == NotEq ||
-                op == LtE ||
-                op == GtE ||
-                op == In ||
-                op == NotIn;
+               op == Equal ||
+               op == Lt ||
+               op == Gt ||
+               op == NotEqual ||
+               op == NotEq ||
+               op == LtE ||
+               op == GtE ||
+               op == In ||
+               op == NotIn;
     }
 }

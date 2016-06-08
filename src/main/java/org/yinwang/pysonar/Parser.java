@@ -30,23 +30,24 @@ public class Parser {
     private String jsonizer;
     private String parserLog;
     private String file;
+    private String content;
 
 
     public Parser() {
 
-        exchangeFile = _.locateTmp("json");
-        endMark = _.locateTmp("end");
-        jsonizer = _.locateTmp("dump_python");
-        parserLog = _.locateTmp("parser_log");
+        exchangeFile = $.locateTmp("json");
+        endMark = $.locateTmp("end");
+        jsonizer = $.locateTmp("dump_python");
+        parserLog = $.locateTmp("parser_log");
 
         startPythonProcesses();
 
         if (python2Process != null) {
-            _.msg("started: " + PYTHON2_EXE);
+            $.msg("started: " + PYTHON2_EXE);
         }
 
         if (python3Process != null) {
-            _.msg("started: " + PYTHON3_EXE);
+            $.msg("started: " + PYTHON3_EXE);
         }
     }
 
@@ -65,13 +66,13 @@ public class Parser {
             URL url = Thread.currentThread().getContextClassLoader().getResource(dumpPythonResource);
             FileUtils.copyURLToFile(url, new File(jsonizer));
         } catch (Exception e) {
-            _.die("Failed to copy resource file:" + dumpPythonResource);
+            $.die("Failed to copy resource file:" + dumpPythonResource);
         }
 
         python2Process = startInterpreter(PYTHON2_EXE);
         python3Process = startInterpreter(PYTHON3_EXE);
         if (python2Process == null && python3Process == null) {
-            _.die("You don't seem to have either of Python or Python3 on PATH");
+            $.die("You don't seem to have either of Python or Python3 on PATH");
         }
     }
 
@@ -199,7 +200,7 @@ public class Parser {
         if (type.equals("BoolOp")) {
             List<Node> values = convertList(map.get("values"));
             if (values == null || values.size() < 2) {
-                _.die("impossible number of arguments, please fix the Python parser");
+                $.die("impossible number of arguments, please fix the Python parser");
             }
             Op op = convertOp(map.get("op"));
             BinOp ret = new BinOp(op, values.get(0), values.get(1), file, start, end);
@@ -308,23 +309,43 @@ public class Parser {
             return new Expr(value, file, start, end);
         }
 
-        if (type.equals("For")) {
+        if (type.equals("For") || type.equals("AsyncFor")) {
             Node target = convert(map.get("target"));
             Node iter = convert(map.get("iter"));
             Block body = convertBlock(map.get("body"));
             Block orelse = convertBlock(map.get("orelse"));
-            return new For(target, iter, body, orelse, file, start, end);
+            return new For(target, iter, body, orelse, type.equals("AsyncFor"), file, start, end);
         }
 
-        if (type.equals("FunctionDef") || type.equals("Lambda")) {
+        if (type.equals("FunctionDef") || type.equals("Lambda") || type.equals("AsyncFunctionDef")) {
             Name name = type.equals("Lambda") ? null : (Name) convert(map.get("name_node"));
             Map<String, Object> argsMap = (Map<String, Object>) map.get("args");
             List<Node> args = convertList(argsMap.get("args"));
             List<Node> defaults = convertList(argsMap.get("defaults"));
             Node body = type.equals("Lambda") ? convert(map.get("body")) : convertBlock(map.get("body"));
-            Name vararg = argsMap.get("vararg") == null ? null : new Name((String) argsMap.get("vararg"));
-            Name kwarg = argsMap.get("kwarg") == null ? null : new Name((String) argsMap.get("kwarg"));
-            return new FunctionDef(name, args, body, defaults, vararg, kwarg, file, start, end);
+
+            // handle vararg depending on different python versions
+            Name vararg = null;
+            Object varargObj = argsMap.get("vararg");
+            if (varargObj instanceof String) {
+                vararg = new Name((String) argsMap.get("vararg"));
+            } else if (varargObj instanceof Map) {
+                String argName = (String) ((Map) varargObj).get("arg");
+                vararg = new Name(argName);
+            }
+
+            // handle kwarg depending on different python versions
+            Name kwarg = null;
+            Object kwargObj = argsMap.get("kwarg");
+            if (kwargObj instanceof String) {
+                kwarg = new Name((String) argsMap.get("kwarg"));
+            } else if (kwargObj instanceof Map) {
+                String argName = (String) ((Map) kwargObj).get("arg");
+                kwarg = new Name(argName);
+            }
+
+            boolean isAsync = type.equals("AsyncFunctionDef");
+            return new FunctionDef(name, args, body, defaults, vararg, kwarg, file, isAsync, start, end);
         }
 
         if (type.equals("GeneratorExp")) {
@@ -368,6 +389,7 @@ public class Parser {
 
         if (type.equals("Import")) {
             List<Alias> aliases = convertList(map.get("names"));
+            locateNames(aliases, start);
             return new Import(aliases, file, start, end);
         }
 
@@ -376,6 +398,7 @@ public class Parser {
             int level = ((Double) map.get("level")).intValue();
             List<Name> moduleSeg = module == null ? null : segmentQname(module, start + "from ".length() + level, true);
             List<Alias> names = convertList(map.get("names"));
+            locateNames(names, start);
             return new ImportFrom(moduleSeg, names, level, file, start, end);
         }
 
@@ -409,6 +432,22 @@ public class Parser {
         if (type.equals("Name")) {
             String id = (String) map.get("id");
             return new Name(id, file, start, end);
+        }
+
+        if (type.equals("NameConstant")) {
+            String strVal;
+            Object value = map.get("value");
+            if (value == null) {
+                strVal = "None";
+            } else if (value instanceof Boolean) {
+                strVal = ((Boolean) value) ? "true" : "false";
+            } else if (value instanceof String) {
+                strVal = (String) value;
+            } else {
+                $.msg("[WARNING] NameConstant contains unrecognized value: " + value + ", please report issue");
+                strVal = "";
+            }
+            return new Name(strVal, file, start, end);
         }
 
         // another name for Name in Python3 func parameters?
@@ -475,6 +514,11 @@ public class Parser {
         }
 
         if (type.equals("Return")) {
+            Node value = convert(map.get("value"));
+            return new Return(value, file, start, end);
+        }
+
+        if (type.equals("Await")) {
             Node value = convert(map.get("value"));
             return new Return(value, file, start, end);
         }
@@ -552,7 +596,7 @@ public class Parser {
             return new While(test, body, orelse, file, start, end);
         }
 
-        if (type.equals("With")) {
+        if (type.equals("With") || type.equals("AsyncWith")) {
             List<Withitem> items = new ArrayList<>();
 
             Node context_expr = convert(map.get("context_expr"));
@@ -574,7 +618,8 @@ public class Parser {
                 }
             }
 
-            return new With(items, body, file, start, end);
+            boolean isAsync = type.equals("AsyncWith");
+            return new With(items, body, file, isAsync, start, end);
         }
 
         if (type.equals("Yield")) {
@@ -587,9 +632,8 @@ public class Parser {
             return new Yield(value, file, start, end);
         }
 
-        _.die("[Please report bug]: unexpected ast node: " + map.get("type"));
-
-        return null;
+        $.msg("\n[Please Report]: unexpected ast node: " + map.get("type"));
+        return new Unsupported(file, start, end);
     }
 
 
@@ -609,6 +653,25 @@ public class Parser {
             }
 
             return out;
+        }
+    }
+
+
+    // cpython ast doesn't have location information for names in the Alias node, thus we need to locate it here.
+    private void locateNames(List<Alias> names, int start) {
+        for (Alias a : names) {
+            Name first = a.name.get(0);
+            start = content.indexOf(first.id, start);
+            first.start = start;
+            first.end = start + first.id.length();
+            start = first.end;
+            if (a.asname != null) {
+                start = content.indexOf(a.asname.id, start);
+                a.asname.start = start;
+                a.asname.end = start + a.asname.id.length();
+                a.asname.file = file;  // file is missing for asname node
+                start = a.asname.end;
+            }
         }
     }
 
@@ -681,6 +744,10 @@ public class Parser {
 
         if (type.equals("Mult")) {
             return Op.Mul;
+        }
+
+        if (type.equals("MatMult")) {
+            return Op.MatMult;
         }
 
         if (type.equals("Div")) {
@@ -778,8 +845,8 @@ public class Parser {
             return Op.NotIn;
         }
 
-        _.die("illegal operator: " + type);
-        return null;
+        $.msg("[please report] unsupported operator: " + type);
+        return Op.Unsupported;
     }
 
 
@@ -830,7 +897,7 @@ public class Parser {
             builder.environment().remove("PYTHONPATH");
             p = builder.start();
         } catch (Exception e) {
-            _.msg("Failed to start: " + pythonExe);
+            $.msg("Failed to start: " + pythonExe);
             return null;
         }
         return p;
@@ -840,6 +907,7 @@ public class Parser {
     @Nullable
     public Node parseFile(String filename) {
         file = filename;
+        content = $.readFile(filename);
 
         Node node2 = parseFileInner(filename, python2Process);
         if (node2 != null) {
@@ -847,14 +915,12 @@ public class Parser {
         } else if (python3Process != null) {
             Node node3 = parseFileInner(filename, python3Process);
             if (node3 == null) {
-                _.msg("failed to parse: " + filename);
                 Analyzer.self.failedToParse.add(filename);
                 return null;
             } else {
                 return node3;
             }
         } else {
-            _.msg("failed to parse: " + filename);
             Analyzer.self.failedToParse.add(filename);
             return null;
         }
@@ -869,9 +935,9 @@ public class Parser {
         File marker = new File(endMark);
         cleanTemp();
 
-        String s1 = _.escapeWindowsPath(filename);
-        String s2 = _.escapeWindowsPath(exchangeFile);
-        String s3 = _.escapeWindowsPath(endMark);
+        String s1 = $.escapeWindowsPath(filename);
+        String s2 = $.escapeWindowsPath(exchangeFile);
+        String s3 = $.escapeWindowsPath(endMark);
         String dumpCommand = "parse_dump('" + s1 + "', '" + s2 + "', '" + s3 + "')";
 
         if (!sendCommand(dumpCommand, pythonProcess)) {
@@ -882,7 +948,7 @@ public class Parser {
         long waitStart = System.currentTimeMillis();
         while (!marker.exists()) {
             if (System.currentTimeMillis() - waitStart > TIMEOUT) {
-                _.msg("\nTimed out while parsing: " + filename);
+                Analyzer.self.failedToParse.add(filename);
                 cleanTemp();
                 startPythonProcesses();
                 return null;
@@ -896,7 +962,7 @@ public class Parser {
             }
         }
 
-        String json = _.readFile(exchangeFile);
+        String json = $.readFile(exchangeFile);
         if (json != null) {
             cleanTemp();
             Map<String, Object> map = gson.fromJson(json, Map.class);
@@ -922,7 +988,7 @@ public class Parser {
             writer.flush();
             return true;
         } catch (Exception e) {
-            _.msg("\nFailed to send command to interpreter: " + cmd);
+            $.msg("\nFailed to send command to interpreter: " + cmd);
             return false;
         }
     }

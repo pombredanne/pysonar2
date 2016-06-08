@@ -198,7 +198,7 @@ public class JSONDump {
             String path = b.qname.replace('.', '/').replace("%20", ".");
 
             if (b.getFile() != null) {
-                if (b.getFile().startsWith(srcpath) && path.startsWith(srcpath)) {
+                if (b.getFile().startsWith(srcpath)) {
                     writeSymJson(b, symJson);
                     writeDocJson(b, idx, docJson);
                 }
@@ -259,7 +259,7 @@ public class JSONDump {
             docOut = new BufferedOutputStream(new FileOutputStream(docFilename));
             symOut = new BufferedOutputStream(new FileOutputStream(symFilename));
             refOut = new BufferedOutputStream(new FileOutputStream(refFilename));
-            _.msg("graphing: " + srcpath);
+            $.msg("graphing: " + srcpath);
             graph(srcpath, inclpaths, symOut, refOut, docOut);
             docOut.flush();
             symOut.flush();
